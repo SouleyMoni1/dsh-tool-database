@@ -39,30 +39,14 @@ DeepSeek Harness 的 **SQL Server 原生工具插件**：模型直接读（可�
 
 ## 安装
 
+已发布到 npm：**`dsh-tool-mssql`**（源码仓库：https://github.com/SouleyMoni1/dsh-tool-mssql ）。
+
 装完**重启 DSH** 生效：6 个工具与设置页标签页都在重启后出现（`sources.json` 的改动不用重启）。
 
-### 本地目录安装（开发调试）
-
-`link:` 的目标是**相对 profile 目录**解析的：跨盘符直接写 `link:F:\...` 会生成坏联接
-（pnpm 把它当相对路径，落到 `profiles\<profile>\F:\...`）。所以先在 `~/.dsh/profiles`
-下建一个指向仓库的目录联接，各 profile 都用相对路径引用它：
-
-```bat
-mkdir "%USERPROFILE%\.dsh\profiles\.local-links"
-mklink /J "%USERPROFILE%\.dsh\profiles\.local-links\dsh-tool-mssql" "F:\EdenOS\AI\dsh-tool-mssql"
-```
-
-`link:` 不跑 `prepack`，装之前先 `npm run build` 出 `lib/`。
+### Web profile（CLI 管理）
 
 ```bash
-# Web profile（CLI 可直接管理）
-dsh plugin --profile web add "link:../.local-links/dsh-tool-mssql"
-
-# npm（发布后）
 dsh plugin --profile web add dsh-tool-mssql
-
-# GitHub 源码（会执行 prepack 构建）——本仓库在 fork SouleyMoni1/dsh-tool-sqlite
-dsh plugin --profile web add "github:SouleyMoni1/dsh-tool-sqlite"
 ```
 
 ### 桌面端（desktop profile，由 Electron 应用独占管理）
@@ -71,8 +55,7 @@ dsh plugin --profile web add "github:SouleyMoni1/dsh-tool-sqlite"
 `profile "desktop" is managed exclusively by the Electron application`。
 桌面端要么走市场面板装 npm 上的包，要么手工做一遍 CLI 的等价操作：
 
-1. `~/.dsh/profiles/desktop/package.json` 的 `dependencies` 加
-   `"dsh-tool-mssql": "link:../.local-links/dsh-tool-mssql"`；
+1. `~/.dsh/profiles/desktop/package.json` 的 `dependencies` 加 `"dsh-tool-mssql": "^0.1.0"`；
 2. 同一文件的 `dsh.profile.bundles` 数组加 `"dsh-tool-mssql"`；
 3. 在 profile 目录里用应用自带的那份 pnpm 执行 `pnpm install`
    （`~/.dsh/dsh-runtimes/dsh-primary-runtime/dependencies/{node,pnpm}`，
@@ -80,6 +63,29 @@ dsh plugin --profile web add "github:SouleyMoni1/dsh-tool-sqlite"
 
 - 两种 profile 插件不互通，各自装各自的。
 - 安装前把 `@deepseek-ai/dsh-tools` 的 peer 范围与你的 DSH 版本对一下（见 `package.json`）。
+
+### 本地目录安装（开发调试，改代码即时生效）
+
+`link:` 的目标是**相对 profile 目录**解析的：跨盘符直接写 `link:F:\...` 会生成坏联接
+（pnpm 把它当相对路径，落到 `profiles\<profile>\F:\...`）。所以先在 `~/.dsh/profiles`
+下建一个指向仓库的目录联接，各 profile 都用相对路径引用它：
+
+```bat
+mkdir "%USERPROFILE%\.dsh\profiles\.local-links"
+mklink /J "%USERPROFILE%\.dsh\profiles\.local-links\dsh-tool-mssql" "F:\EdenOS\AI\DSH插件\dsh-tool-mssql"
+```
+
+`link:` 不跑 `prepack`，装之前先 `npm run build` 出 `lib/`。
+
+```bash
+dsh plugin --profile web add "link:../.local-links/dsh-tool-mssql"
+```
+
+GitHub 源码安装（会执行 prepack 构建）：
+
+```bash
+dsh plugin --profile web add "github:SouleyMoni1/dsh-tool-mssql"
+```
 
 ## 配置
 

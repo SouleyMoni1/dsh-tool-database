@@ -10,6 +10,14 @@
     "node": "^22.19.0 || >=24.0.0"
   },
   "packageManager": "npm@11.16.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/SouleyMoni1/dsh-tool-mssql.git"
+  },
+  "homepage": "https://github.com/SouleyMoni1/dsh-tool-mssql#readme",
+  "bugs": {
+    "url": "https://github.com/SouleyMoni1/dsh-tool-mssql/issues"
+  },
   "scripts": {
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "build": "tsc -p tsconfig.json",
