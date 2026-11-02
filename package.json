@@ -1,10 +1,10 @@
 {
   "name": "dsh-tool-mssql",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "DeepSeek Harness SQL Server tool plugin — native mssql driver, multi-source, read-only by default, credentials stay host-side (no MCP server in between)",
   "type": "module",
-  "main": "lib/index.js",
-  "types": "lib/index.d.ts",
+  "main": "lib/boot.js",
+  "types": "lib/boot.d.ts",
   "license": "MIT",
   "engines": {
     "node": "^22.19.0 || >=24.0.0"
@@ -43,8 +43,8 @@
   },
   "exports": {
     ".": {
-      "types": "./lib/index.d.ts",
-      "default": "./lib/index.js"
+      "types": "./lib/boot.d.ts",
+      "default": "./lib/boot.js"
     },
     "./client": "./client/client.js",
     "./cordis.patch.yml": "./cordis.patch.yml",

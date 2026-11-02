@@ -42,53 +42,40 @@ DeepSeek Harness 的 **SQL Server 原生工具插件**：模型直接读（可�
 已发布到 npm：**`dsh-tool-mssql`**（源码仓库：https://github.com/SouleyMoni1/dsh-tool-mssql ）。
 装完**重启 DSH** 生效：6 个工具与设置页标签页都在重启后出现（`sources.json` 的改动不用重启）。
 
-### 先读：当前 DSH 0.2.x 不能把本插件直接装进 profile
-
-DSH 宿主解析器 `@deepseek-ai/dsh-app-boot` 的 `ResolutionRouter.routeScoped` 把
-`require('process/')` 归一成裸名 `process` 后，直接
-`for (const p of createRequire(parent).resolve.paths(name))`；Node 对内置模块名返回 `null`，
-于是抛 `TypeError: createRequire.resolve.paths is not a function or its return value is not iterable`。
-`mssql → tedious → readable-stream` 里正好有 `require('process/')`，插件在 import 阶段就失败，
-启动日志只有一行 `tool-mssql (dsh-tool-mssql): failed to import`（6 个工具和设置页都不会出现）。
-
-`link:` 安装走解析器的 `routeLinked` 分支，不经过这段代码，所以能正常加载。因此推荐下面的
-「npm 装到 profile 外层 + link 挂载」：版本仍由 npm 管，加载走 linked 层。
-
-### 推荐：npm 装到 profile 外层，再 link 进 profile
-
-1. 建一个不在 `~/.dsh/profiles` 下的插件库，用 npm 装。`--omit=peer` 是为了不带进第二份
-   `@deepseek-ai/*`（`@deepseek-ai/dsh-tools`、`@deepseek-ai/cordis` 由宿主解析器提供，避免双实例）：
+### Web profile
 
 ```bash
-mkdir -p ~/.dsh/plugin-store && cd ~/.dsh/plugin-store
-npm init -y
-npm install dsh-tool-mssql@0.1.0 --omit=peer
+dsh plugin --profile web add dsh-tool-mssql
 ```
 
-2. 各 profile 的 `package.json` 里指过去，并登记 bundle：
+### 桌面端（desktop profile，由 Electron 应用独占管理）
 
-```json
-"dependencies": {
-  "dsh-tool-mssql": "link:C:/Users/<你>/.dsh/plugin-store/node_modules/dsh-tool-mssql"
-},
-"dsh": { "profile": { "bundles": ["dsh-tool-mssql"] } }
-```
+`dsh plugin --profile desktop ...` 会被 CLI 直接拒绝：
+`profile "desktop" is managed exclusively by the Electron application`。
+桌面端要么走市场面板装 npm 上的包，要么手工做一遍 CLI 的等价操作：
 
-3. 在 profile 目录跑 `pnpm install`（desktop 用应用自带的那份 pnpm，见下），重启 DSH。
+1. `~/.dsh/profiles/desktop/package.json` 的 `dependencies` 加 `"dsh-tool-mssql": "^0.1.1"`；
+2. 同一文件的 `dsh.profile.bundles` 数组加 `"dsh-tool-mssql"`；
+3. 在 profile 目录里用应用自带的那份 pnpm 执行 `pnpm install`
+   （`~/.dsh/dsh-runtimes/dsh-primary-runtime/dependencies/{node,pnpm}`，
+   profile 的 `.modules.yaml` 记的是 `pnpm@11.7.0`），然后重启 DSH。
 
-升级：`cd ~/.dsh/plugin-store && npm install dsh-tool-mssql@latest --omit=peer`，重启 DSH。
-加载成功的判据：启动日志里没有 `failed to import`。
-
-### 直接装进 profile（等宿主修好这段解析代码后可用；当前版本会加载失败）
-
-Web profile：`dsh plugin --profile web add dsh-tool-mssql`。
-
-桌面端（desktop profile 由 Electron 应用独占管理，`dsh plugin --profile desktop ...` 会被 CLI 拒绝）：
-`dependencies` 加 `"dsh-tool-mssql": "^0.1.0"`、`dsh.profile.bundles` 加 `"dsh-tool-mssql"`，
-再用应用自带 pnpm（`~/.dsh/dsh-runtimes/dsh-primary-runtime/dependencies/{node,pnpm}`）在 profile 目录 `pnpm install`。
+升级：把版本号改成新的 `^x.y.z`（或重跑一次 `dsh plugin --profile web add dsh-tool-mssql@latest`）再 `pnpm install`，重启即可。
 
 - 两种 profile 插件不互通，各自装各自的。
 - 安装前把 `@deepseek-ai/dsh-tools` 的 peer 范围与你的 DSH 版本对一下（见 `package.json`）。
+
+### 关于 0.1.1 的入口 shim（为什么以前装进 profile 会 failed to import）
+
+DSH 0.2.x 的 profile 层解析器（`@deepseek-ai/dsh-app-boot` 的 `ResolutionRouter.routeScoped`）
+把 `require('process/')` 归一成裸名 `process` 后直接
+`for (const p of createRequire(parent).resolve.paths(name))`；Node 对内建模块名返回 `null`，
+这段没有 `?? []` 兜底，于是抛 `TypeError: createRequire.resolve.paths is not a function or its return value is not iterable`。
+`mssql → tedious → readable-stream` 里正好有 `require('process/')`，插件在 import 阶段就失败，
+启动日志只有一行 `tool-mssql (dsh-tool-mssql): failed to import`。
+
+0.1.1 起入口改为 `lib/boot.js`：先加载一小段 shim，把内建模块请求直接短路（解析结果与 Node 原生一致），
+再动态 import 真正实现，因此**正常装进 profile 即可**。宿主修好这段解析代码后，这层 shim 可以删掉。
 
 ### 本地目录安装（开发调试，改代码即时生效）
 
