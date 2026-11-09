@@ -1,7 +1,7 @@
 {
-  "name": "dsh-tool-mssql",
-  "version": "0.1.1",
-  "description": "DeepSeek Harness SQL Server tool plugin — native mssql driver, multi-source, read-only by default, credentials stay host-side (no MCP server in between)",
+  "name": "dsh-tool-database",
+  "version": "0.2.0",
+  "description": "DeepSeek Harness database tool plugin — SQL Server / PostgreSQL / MySQL over native drivers, multi-source, read-only by default, credentials stay host-side (no MCP server in between)",
   "type": "module",
   "main": "lib/boot.js",
   "types": "lib/boot.d.ts",
@@ -12,11 +12,11 @@
   "packageManager": "npm@11.16.0",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/SouleyMoni1/dsh-tool-mssql.git"
+    "url": "git+https://github.com/SouleyMoni1/dsh-tool-database.git"
   },
-  "homepage": "https://github.com/SouleyMoni1/dsh-tool-mssql#readme",
+  "homepage": "https://github.com/SouleyMoni1/dsh-tool-database#readme",
   "bugs": {
-    "url": "https://github.com/SouleyMoni1/dsh-tool-mssql/issues"
+    "url": "https://github.com/SouleyMoni1/dsh-tool-database/issues"
   },
   "scripts": {
     "typecheck": "tsc -p tsconfig.json --noEmit",
@@ -27,10 +27,12 @@
   },
   "peerDependencies": {
     "@deepseek-ai/cordis": "^4.0.1",
-    "@deepseek-ai/dsh-tools": "^0.1.0-rc.7 || ^0.1.7-alpha.1 || ^0.2.0-rc.1"
+    "@deepseek-ai/dsh-tools": "^0.1.0-rc.7 || ^0.1.7-alpha.1 || ^0.2.0-rc.1 || ^0.2.1-alpha.1"
   },
   "dependencies": {
-    "mssql": "^12.7.4"
+    "mssql": "^12.7.4",
+    "mysql2": "^3.11.0",
+    "pg": "^8.13.0"
   },
   "dsh": {
     "bundle": {
@@ -55,6 +57,7 @@
     "src",
     "client",
     "cordis.patch.yml",
+    "docs/images",
     "README.md",
     "LICENSE"
   ],
@@ -64,12 +67,16 @@
     "dsh-plugin",
     "mssql",
     "sqlserver",
+    "postgres",
+    "postgresql",
+    "mysql",
     "database",
     "tool"
   ],
   "devDependencies": {
     "@deepseek-ai/dsh-tools": "^0.1.0-rc.7",
     "@types/mssql": "^12.3.0",
+    "@types/pg": "^8.11.0",
     "@types/node": "^26.0.0",
     "typescript": "^7.0.0",
     "vitest": "^4.0.0"

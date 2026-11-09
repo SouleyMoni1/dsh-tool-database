@@ -2,10 +2,10 @@
 #
 # 源清单两种配法，二选一：
 #   1. 这里直接写 config.sources（非空即生效）；
-#   2. 留空 sources，改用 $DSH_HOME/mssql-tool/sources.json —— 改文件即时生效，无需重启。
+#   2. 留空 sources，改用 $DSH_HOME/database-tool/sources.json —— 改文件即时生效，无需重启。
 - insert:
-    - id: tool-mssql
-      name: 'dsh-tool-mssql'
+    - id: tool-database
+      name: 'dsh-tool-database'
       config:
         sources: []
         # defaultSource: prod_WMS

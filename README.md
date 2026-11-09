@@ -1,8 +1,25 @@
-# dsh-tool-mssql
+# dsh-tool-database
 
-DeepSeek Harness 的 **SQL Server 原生工具插件**：模型直接读（可选写）你配置的 SQL Server，**不经过 MCP、不 spawn dbhub 进程**。
+DeepSeek Harness 的**数据库原生工具插件**：一套工具同时连 **SQL Server / PostgreSQL / MySQL**，
+模型直接读（可选写）你配置的库，**不经过 MCP、不 spawn 外部进程**；浏览器里还有「数据库」标签页，
+左边管连接、右边直接跑 SQL 看结果。
 
-> 由 [WODE25500/dsh-tool-sqlite](https://github.com/WODE25500/dsh-tool-sqlite) 的骨架 fork 而来：去掉 SQLite 工作区语义，换成 `mssql`（tedious）驱动 + 多数据源 + 凭据边界。定位是**替代 dbhub MCP 那一层**：连接与凭据留在宿主侧，模型只看到源句柄与数据。
+> 前身是 `dsh-tool-mssql`（只能连 SQL Server，所以名字里带 mssql）。0.2.0 起改成多引擎，
+> 包名与工具前缀一起换成 `dsh-tool-database` / `db_*`——名字不再绑定某一种数据库。
+>
+> 骨架来自 [WODE25500/dsh-tool-sqlite](https://github.com/WODE25500/dsh-tool-sqlite)：去掉 SQLite 工作区语义，
+> 换成官方驱动 + 多数据源 + 凭据边界。定位是**替代 dbhub 这类 MCP 那一层**：连接与凭据留在宿主侧，
+> 模型只看到源句柄与数据。
+
+## 支持的引擎
+
+| 引擎 | `engine` | 驱动 | 默认端口 | DSN 前缀 |
+| --- | --- | --- | --- | --- |
+| SQL Server | `sqlserver`（默认，兼容老清单） | `mssql`（tedious） | 1433 | `sqlserver://` / `mssql://` / `tds://` |
+| PostgreSQL | `postgres` | `pg` | 5432 | `postgres://` / `postgresql://` / `pg://` |
+| MySQL / MariaDB | `mysql` | `mysql2` | 3306 | `mysql://` |
+
+每个源独立选引擎；同一个插件里可以同时放 SQL Server 生产库、PostgreSQL 报表库、MySQL 业务库。
 
 ## 相比 dbhub MCP 的差异
 
@@ -11,6 +28,7 @@ DeepSeek Harness 的 **SQL Server 原生工具插件**：模型直接读（可�
 | 运行形态 | 宿主 spawn 一个子进程，stdio 通信 | 进程内 host 插件，无子进程 |
 | 启动依赖 | 首次可能要 `npx` 联网解析包；代理挂了会反复重连直到工具被注销 | 纯本地依赖，无网络解析 |
 | 凭据位置 | 明文写在 `dbhub.toml` 的 DSN 里 | `passwordEnv` 环境变量优先；模型永远看不到密码 |
+| 支持的库 | 多种（各自配置） | SQL Server / PostgreSQL / MySQL |
 | 工具数量 | 每个源 × 每个 tool 一组 | 恒定 6 个，源再多也不膨胀上下文 |
 | 只读护栏 | 靠 `[[tools]] readonly` 关键字过滤 | 语句白名单 + 单语句判定 + 写通道双闸门 |
 
@@ -18,34 +36,47 @@ DeepSeek Harness 的 **SQL Server 原生工具插件**：模型直接读（可�
 
 | 工具 | 功能 |
 | --- | --- |
-| `mssql_sources` | 列出已配置的源（id / 主机 / 端口 / 库 / 账号 / 是否只读），可 `probe: true` 实测连通性 |
-| `mssql_databases` | 列出该实例上的数据库 |
-| `mssql_tables` | 列出表与视图（schema / 类型 / 行数估算），支持 `schema` / `filter` 过滤 |
-| `mssql_schema` | 单表列结构：类型（带长度精度）/ 可空 / 自增 / 主键 / 默认值 |
-| `mssql_query` | **只读**查询，单条语句，`@p0` 绑定参数，返回 `{ columns, rows, truncated, rowCount }` |
-| `mssql_execute` | **写**通道，需源开启 `writable` **且**显式 `allowWrite: true` |
+| `db_sources` | 列出已配置的源（id / 引擎 / 主机 / 端口 / 库 / 账号 / 是否可写），可 `probe: true` 实测连通性 |
+| `db_databases` | 列出该实例上的数据库（SQL Server `sys.databases` / PostgreSQL `pg_database` / MySQL `SHOW DATABASES`） |
+| `db_tables` | 列出表与视图（schema / 类型 / 行数估算），支持 `schema` / `filter` 过滤 |
+| `db_schema` | 单表列结构：类型（带长度精度）/ 可空 / 自增 / 主键 / 默认值 |
+| `db_query` | **只读**查询，单条语句，参数绑定，返回 `{ columns, rows, truncated, rowCount, elapsedMs }` |
+| `db_execute` | **写**通道，需源开启 `writable` **且**显式 `allowWrite: true`；DDL 另需 `allowDdl` |
 
-> 省 token 工作流：`mssql_sources` → `mssql_tables filter:` → `mssql_schema` → `mssql_query`。先看结构再取数，避免 `SELECT *` 全表灌进上下文。
+> 省 token 工作流：`db_sources` → `db_tables filter:` → `db_schema` → `db_query`。先看结构再取数，避免 `SELECT *` 全表灌进上下文。
 
-## 安全模型
+参数占位按引擎走：SQL Server 用 `@p0, @p1 …`；PostgreSQL 用 `$1, $2 …`；MySQL 用 `?`，值都放 `params` 数组。
 
-- **只读白名单**：只读通道仅放行以 `SELECT` / `WITH` / `VALUES` 开头的语句；
-- **危险词拦截**：`SELECT ... INTO`、`EXEC`、`OPENROWSET`、`DBCC`、`WAITFOR`、DDL/DML 关键字直接拒绝（判定前先剥离字符串、注释与 `[]`/`""` 标识符，不会误伤字面量里的关键字）；
-- **单语句**：只读通道出现分号分隔的多语句即拒绝；
-- **写通道双闸门**：源必须 `writable: true`，调用方还要显式 `allowWrite: true`；DDL 另需源开启 `allowDdl`；`xp_*` / `OPENROWSET` / `BACKUP` / `GRANT` 等提权关键字一律拒绝；
-- **参数绑定**：`mssql_query` / `mssql_execute` 用 `@p0, @p1 …` 占位 + `params` 数组绑定，不做字符串拼接；
-- **输出预算**：默认 100 行、硬上限 500 行，超限明确标注 `truncated`；
-- **凭据边界**：`mssql_sources` 只输出「是否已配密码」，不含密码、不含 `passwordEnv` 的取值、不含完整连接串。
+## 会话标签页「数据库」（0.2.0 新增）
+
+会话顶部标签行里多一个 **数据库**（挨着「对话 / 轨迹」），点开就是：
+
+- **左栏**：连接列表（搜索、引擎徽标、可写标记），点一条即在右侧打开；
+- **右栏 · 查询**：SQL 输入框 + 「执行」（Ctrl / Cmd + Enter），结果表格显示列名、行数、耗时，超限标「已截断」；
+- **右栏 · 连接表单**：新建 / 编辑连接用表单填（引擎、主机、端口、库、账号、密码、TLS、可写、允许 DDL），
+  「测试连接」当场试连；连接字符串收在「高级」里，不想填字段时再展开。
+
+![会话顶部「数据库」标签页：左连接列表 + 右查询区](docs/images/session-tab.png)
+
+新建 / 编辑连接走表单（下图），引擎下拉切换时端口自动跟着变（1433 / 5432 / 3306）；
+「测试连接」当场试连；连接字符串收在「高级」里，不想填字段时再展开——不用再手写 DSN。
+
+![新建连接表单](docs/images/connection-form.png)
+
+设置页里只留「数据库连接」一节：控制台的**写策略**与默认行数。
+
+![设置页：控制台写策略](docs/images/console-settings.png)
+
+所有改动都写回宿主侧清单文件（临时文件 + rename），宿主按 mtime 热加载，**不用重启**。
 
 ## 安装
 
-已发布到 npm：**`dsh-tool-mssql`**（源码仓库：https://github.com/SouleyMoni1/dsh-tool-mssql ）。
-装完**重启 DSH** 生效：6 个工具与设置页标签页都在重启后出现（`sources.json` 的改动不用重启）。
+已发布到 npm：**`dsh-tool-database`**（源码仓库：https://github.com/SouleyMoni1/dsh-tool-database ）。
 
 ### Web profile
 
 ```bash
-dsh plugin --profile web add dsh-tool-mssql
+dsh plugin --profile web add dsh-tool-database
 ```
 
 ### 桌面端（desktop profile，由 Electron 应用独占管理）
@@ -54,50 +85,51 @@ dsh plugin --profile web add dsh-tool-mssql
 `profile "desktop" is managed exclusively by the Electron application`。
 桌面端要么走市场面板装 npm 上的包，要么手工做一遍 CLI 的等价操作：
 
-1. `~/.dsh/profiles/desktop/package.json` 的 `dependencies` 加 `"dsh-tool-mssql": "^0.1.1"`；
-2. 同一文件的 `dsh.profile.bundles` 数组加 `"dsh-tool-mssql"`；
+1. `~/.dsh/profiles/desktop/package.json` 的 `dependencies` 加 `"dsh-tool-database": "^0.2.0"`；
+2. 同一文件的 `dsh.profile.bundles` 数组加 `"dsh-tool-database"`；
 3. 在 profile 目录里用应用自带的那份 pnpm 执行 `pnpm install`
-   （`~/.dsh/dsh-runtimes/dsh-primary-runtime/dependencies/{node,pnpm}`，
-   profile 的 `.modules.yaml` 记的是 `pnpm@11.7.0`），然后重启 DSH。
+   （`~/.dsh/dsh-runtimes/dsh-primary-runtime/dependencies/{node,pnpm}`），然后重启 DSH。
 
-升级：把版本号改成新的 `^x.y.z`（或重跑一次 `dsh plugin --profile web add dsh-tool-mssql@latest`）再 `pnpm install`，重启即可。
+装完**重启 DSH**：6 个工具、会话标签页、设置页标签都要重启后才出现（`sources.json` 的改动不用重启）。
 
-- 两种 profile 插件不互通，各自装各自的。
-- 安装前把 `@deepseek-ai/dsh-tools` 的 peer 范围与你的 DSH 版本对一下（见 `package.json`）。
+### 从 dsh-tool-mssql 升级
 
-### 关于 0.1.1 的入口 shim（为什么以前装进 profile 会 failed to import）
+旧的 `dsh-tool-mssql` 与新的 `dsh-tool-database` **不要同时装**（会同时出现 `mssql_*` 和 `db_*` 两套工具）：
+
+```bash
+dsh plugin --profile web remove dsh-tool-mssql
+dsh plugin --profile web add dsh-tool-database
+```
+
+首次启动会自动把 `$DSH_HOME/mssql-tool/sources.json` 复制到 `$DSH_HOME/database-tool/sources.json`
+（只复制不删除，老清单留着随时回退）；老字段 `server` 仍然认，缺省引擎按 `sqlserver` 处理。
+
+### 关于入口 shim（为什么以前装进 profile 会 failed to import）
 
 DSH 0.2.x 的 profile 层解析器（`@deepseek-ai/dsh-app-boot` 的 `ResolutionRouter.routeScoped`）
 把 `require('process/')` 归一成裸名 `process` 后直接
 `for (const p of createRequire(parent).resolve.paths(name))`；Node 对内建模块名返回 `null`，
 这段没有 `?? []` 兜底，于是抛 `TypeError: createRequire.resolve.paths is not a function or its return value is not iterable`。
-`mssql → tedious → readable-stream` 里正好有 `require('process/')`，插件在 import 阶段就失败，
-启动日志只有一行 `tool-mssql (dsh-tool-mssql): failed to import`。
+各数据库驱动的 CJS 依赖链里都有这种写法，插件会在 import 阶段失败，启动日志只有一行
+`failed to import`。
 
 0.1.1 起入口改为 `lib/boot.js`：先加载一小段 shim，把内建模块请求直接短路（解析结果与 Node 原生一致），
 再动态 import 真正实现，因此**正常装进 profile 即可**。宿主修好这段解析代码后，这层 shim 可以删掉。
 
 ### 本地目录安装（开发调试，改代码即时生效）
 
-`link:` 的目标是**相对 profile 目录**解析的：跨盘符直接写 `link:F:\...` 会生成坏联接
-（pnpm 把它当相对路径，落到 `profiles\<profile>\F:\...`）。所以先在 `~/.dsh/profiles`
-下建一个指向仓库的目录联接，各 profile 都用相对路径引用它：
+`link:` 的目标是**相对 profile 目录**解析的：跨盘符直接写 `link:F:\...` 会生成坏联接。
+先在 `~/.dsh/profiles` 下建一个指向仓库的目录联接，各 profile 都用相对路径引用：
 
 ```bat
 mkdir "%USERPROFILE%\.dsh\profiles\.local-links"
-mklink /J "%USERPROFILE%\.dsh\profiles\.local-links\dsh-tool-mssql" "F:\EdenOS\AI\DSH插件\dsh-tool-mssql"
+mklink /J "%USERPROFILE%\.dsh\profiles\.local-links\dsh-tool-database" "F:\EdenOS\AI\DSH插件\dsh-tool-mssql"
 ```
 
 `link:` 不跑 `prepack`，装之前先 `npm run build` 出 `lib/`。
 
 ```bash
-dsh plugin --profile web add "link:../.local-links/dsh-tool-mssql"
-```
-
-GitHub 源码安装（会执行 prepack 构建）：
-
-```bash
-dsh plugin --profile web add "github:SouleyMoni1/dsh-tool-mssql"
+dsh plugin --profile web add "link:../.local-links/dsh-tool-database"
 ```
 
 ## 配置
@@ -108,152 +140,132 @@ dsh plugin --profile web add "github:SouleyMoni1/dsh-tool-mssql"
 
 ```yaml
 - insert:
-    - id: tool-mssql
-      name: 'dsh-tool-mssql'
+    - id: tool-database
+      name: 'dsh-tool-database'
       config:
         defaultSource: prod_WMS
         sources:
           - id: prod_WMS
+            engine: sqlserver
             description: 【正式·只读】10.0.0.9/demo_erp
-            server: 10.0.0.9
+            host: 10.0.0.9
             port: 1433
             database: demo_erp
             user: reader
             passwordEnv: MSSQL_PROD_PW
             writable: false
-          - id: dev
-            description: 【开发】10.0.0.9/DAYA_DEV
-            server: 10.0.0.9
-            database: DAYA_DEV
-            user: reader
-            passwordEnv: MSSQL_DEV_PW
-            writable: true
+          - id: pg_report
+            engine: postgres
+            description: 【报表】pg.internal/report
+            host: pg.internal
+            database: report
+            user: readonly
+            passwordEnv: PG_REPORT_PW
+            ssl: true
 ```
 
 ### 方式二：独立 JSON 文件（推荐，改完即时生效）
 
-`$DSH_HOME/mssql-tool/sources.json`（默认 `C:\\Users\\<你>\\.dsh\\mssql-tool\\sources.json`）：
+`$DSH_HOME/database-tool/sources.json`（默认 `C:\Users\<你>\.dsh\database-tool\sources.json`）：
 
 ```json
 [
   {
     "id": "prod_WMS",
+    "engine": "sqlserver",
     "description": "【正式·只读】10.0.0.9/demo_erp",
-    "server": "10.0.0.9",
+    "host": "10.0.0.9",
     "port": 1433,
     "database": "demo_erp",
     "user": "reader",
     "passwordEnv": "MSSQL_PROD_PW",
     "writable": false
+  },
+  {
+    "id": "mysql_shop",
+    "engine": "mysql",
+    "host": "10.0.0.9",
+    "port": 3306,
+    "database": "shop",
+    "user": "reader",
+    "password": "仅本机可见的明文密码",
+    "writable": false
   }
 ]
 ```
 
-文件按 mtime 热加载：**改完不用重启**，下一次工具调用即生效。插件启动时若 `sources.json` 不存在也不报错，只是没有可用源。
+文件按 mtime 热加载：**改完不用重启**，下一次工具调用即生效。插件启动时若清单文件不存在也不报错，只是没有可用源。
+日常维护直接用会话里的「数据库」标签页，不用手写 JSON。
 
 ### 字段
 
 | 字段 | 必填 | 说明 |
 | --- | --- | --- |
 | `id` | ✅ | 源句柄，模型用它在各工具里选库；清单内不可重复 |
-| `server` | ✅ | 主机名或 IP |
-| `port` | | 默认 `1433` |
-| `database` | | 默认库；不填则由账号默认库决定 |
+| `engine` | | `sqlserver`（默认）/ `postgres` / `mysql` |
+| `host` | ✅ | 主机名或 IP（老字段名 `server` 仍然认） |
+| `port` | | 默认按引擎：1433 / 5432 / 3306 |
+| `database` | | 默认库；不填则由账号默认库决定（MySQL 建议填） |
 | `user` | | 登录名 |
 | `passwordEnv` | | **推荐**：环境变量名，密码从 `process.env` 取 |
 | `password` | | 备选：明文写在配置里（仍只在宿主侧，但会落盘） |
-| `writable` | | 默认 `false`。只有 `true` 才允许 `mssql_execute` |
+| `writable` | | 默认 `false`。只有 `true` 才允许 `db_execute` |
 | `allowDdl` | | 默认 `false`。允许 `CREATE/ALTER/DROP/TRUNCATE` |
 | `allowBatch` | | 默认 `false`。写通道允许分号分隔的批量语句 |
-| `encrypt` | | 默认 `false`（局域网）。公网/云 SQL Server 请置 `true` |
-| `trustServerCertificate` | | 默认 `true`。`encrypt: true` 且用自签证书时保留 `true` |
+| `ssl` | | 默认 `false`。PostgreSQL / MySQL 走 TLS；SQL Server 等价于 `encrypt` |
+| `encrypt` | | SQL Server 专用；`ssl: true` 会一起打开 |
+| `trustServerCertificate` | | 默认 `true`；云库用自签证书时保留 `true` |
 | `requestTimeoutMs` | | 单语句超时，默认 `15000` |
 
 密码用环境变量时要让 DSH 进程能读到（桌面端可在启动前设置系统环境变量，或改用 `password`）。
 
-## 设置页（图形化维护）
+## 控制台写策略
 
-DSH 设置 → 左侧 **SQL Server 数据源**（与官方标签页并列，`order: 45`）：列出全部源，新增 / 编辑 / 删除，逐条「测试连接」。
-改动直接写回 `sources.json`（同目录临时文件 + rename），宿主侧 mtime 热加载随即生效，不用重启。
+会话「数据库」标签页里跑 SQL 时，写语句受两层控制：
 
-- 连接字符串写 `sqlserver://账号:密码@主机:1433/库名`，也吃 ADO 风格 `Server=host,1433;Database=db;User Id=u;Password=p`；
-- 密码里的 `@ : / ? #` 用百分号编码（`p@ss` → `p%40ss`）；
-- 编辑表单里的连接字符串带**明文密码**，直接改就行；列表行里仍显示 `******`（截图/录屏不外泄）；想不落盘就填 `${MSSQL_PROD_PW}` 走环境变量；
-- 列表可按 **别名** / **描述** 排序，再点一次切升/降序，「文件顺序」一键还原（只影响显示，不回写文件顺序）；
-- 「编辑」在**被点的那一行就地展开**编辑器（不跳顶部），「新增」卡片挂在工具条下方；
-- 「允许写入 / 允许 DDL」对应 `writable` / `allowDdl`；
-- 明文密码只在宿主侧：工具输出（`mssql_sources` 等）永远不含密码；设置页的**列表**用 `dsn`（恒为 `******`），只有本机同源、走 DSH 会话鉴权的**编辑表单**才拿 `dsnEdit`（明文，方便直接改）；
-- profile 的 `config.sources` 非空时页面顶部会提示「本页改动不生效」，此时把 `config.sources` 清空再用本页维护。
+1. **控制台写策略**（设置 → 数据库连接，或 `$DSH_HOME/database-tool/config.json` 的 `writeMode`）：
+   - `source`（默认）：跟随数据源的 `writable` / `allowDdl`；
+   - `readonly`：一律只读，写语句直接拒绝（排查时最稳）；
+   - `always`：允许写（仍然要过单语句 / 提权关键字检查）。
+2. **数据源开关**：源的 `writable`、`allowDdl`、`allowBatch`。
 
-实现：宿主侧 `src/settings-rpc.ts` 在 `connection` 的共享 `/api` 通道挂精确路由 `POST /api/dsh-tool-mssql`
-（信封 `{ channel, endpoint, payload }`，端点 `sources/list|save|remove|test`）；浏览器侧 `client/client.js` 是单文件客户端半区
-（`dsh.client.platform = "web"`，只 require React 与官方 primitives）。所以**装完插件要重启一次 DSH**，标签页才会出现；
-没有 Web 服务 / `connection` 服务的部署（如 headless）自动跳过设置页，6 个工具照常可用。
+模型工具 `db_execute` 不受 `writeMode` 影响（它有自己的 `writable` + `allowWrite` 双闸门），
+控制台策略只约束人在界面里敲的 SQL。
+
+## 安全模型
+
+- **只读白名单**：只读通道仅放行以 `SELECT` / `WITH` / `VALUES` 开头的语句；
+- **危险词拦截**：`SELECT ... INTO`、`EXEC`、`OPENROWSET`、`DBCC`、`WAITFOR`、DDL/DML 关键字直接拒绝
+  （判定前先剥离字符串、注释与 `[]` / `""` / 反引号标识符，不会误伤字面量里的关键字）；
+- **单语句**：只读通道出现分号分隔的多语句即拒绝；
+- **写通道双闸门**：源必须 `writable: true`，调用方还要显式 `allowWrite: true`；DDL 另需源开启 `allowDdl`；
+  `xp_*` / `OPENROWSET` / `BACKUP` / `GRANT` 等提权关键字一律拒绝；
+- **参数绑定**：`db_query` / `db_execute` 用引擎各自的占位符 + `params` 数组绑定，不做字符串拼接；
+- **输出预算**：默认 100 行、硬上限 500 行，超限明确标注 `truncated`；
+- **凭据边界**：`db_sources` 只输出「是否已配密码」，不含密码、不含 `passwordEnv` 的取值、不含完整连接串；
+  设置页列表里的 DSN 恒为 `******`，只有本机同源、经 DSH 会话鉴权的编辑表单才拿得到明文回填。
 
 ## 从 dbhub 迁移
 
-1. 把 `~/.dsh/mcp-servers/dbhub.toml` 里每个 `[[sources]]` 转成一条 `sources.json`：`dsn` 里的 `user:password@host:port/database` 拆成 `user` / `passwordEnv`（或 `password`）/ `server` / `port` / `database`；
+1. 把 `~/.dsh/mcp-servers/dbhub.toml` 里每个 `[[sources]]` 转成一条 `sources.json`：
+   `dsn` 里的 `user:password@host:port/database` 拆成 `user` / `passwordEnv`（或 `password`）/ `host` / `port` / `database`，
+   按协议补 `engine`；
 2. 正式库保留 `writable: false`，开发/测试库按原来的策略设 `writable: true`；
-3. **删掉** `~/.dsh/profiles/{desktop,web}/cordis.patch.yml` 里的 `mcp-dbhub` 条目（否则两套工具并存）；
-4. 重启 DSH，用 `mssql_sources probe: true` 验证连通。
+3. **删掉** profile 的 `cordis.patch.yml` 里的 `mcp-dbhub` 条目（否则两套工具并存）；
+4. 重启 DSH，用 `db_sources probe: true` 验证连通。
 
-工具名对照：`execute_sql` → `mssql_query`（读）/ `mssql_execute`（写）；`search_objects` → `mssql_tables` + `mssql_schema`。
+工具名对照：`execute_sql` → `db_query`（读）/ `db_execute`（写）；`search_objects` → `db_tables` + `db_schema`。
 
 ## 使用示例
 
 ```
-mssql_sources probe: true
-mssql_tables source: "prod_WMS" filter: "Order"
-mssql_schema source: "prod_WMS" table: "dbo.Sys_Log"
-mssql_query source: "prod_WMS" sql: "SELECT TOP 10 Url, CreateTime FROM Sys_Log WHERE CreateTime >= @p0 ORDER BY CreateTime DESC" params: ["2026-01-01"]
+db_sources probe: true
+db_tables source: "prod_WMS" filter: "Order"
+db_schema source: "prod_WMS" table: "dbo.Sys_Log"
+db_query source: "prod_WMS" sql: "SELECT TOP 10 Url, CreateTime FROM Sys_Log WHERE CreateTime >= @p0 ORDER BY CreateTime DESC" params: ["2026-01-01"]
+db_query source: "pg_report" sql: "SELECT * FROM orders WHERE created_at >= $1 LIMIT 20" params: ["2026-01-01"]
+db_query source: "mysql_shop" sql: "SELECT id, name FROM goods WHERE id = ?" params: [42]
 ```
-
-## 真机验证（2026-10-06）
-
-| 项 | 实测值 |
-| --- | --- |
-| DSH 桌面端 | 应用 0.2.0-rc.1（Electron，profile: desktop），内含 @deepseek-ai/dsh / dsh-tools 0.2.0-rc.2、cordis 4.0.4 |
-| Web profile / dsh CLI | @deepseek-ai/dsh 0.1.7-rc.2、@deepseek-ai/cordis 4.0.4 |
-| 插件驱动 | mssql 12.7.4（@types/mssql 12.3.0） |
-| 生产库 10.0.0.9 | Microsoft SQL Server 2012 (SP1) 11.0.3128.0 |
-| 开发库 10.0.0.9 | Microsoft SQL Server 2012 11.0.2100.60 |
-| 测试库 10.0.0.9 | Microsoft SQL Server 2019 (RTM) 15.0.2000.5 |
-
-peerDependencies 按上表对齐：`@deepseek-ai/dsh-tools: ^0.1.0-rc.7 || ^0.1.7-alpha.1 || ^0.2.0-rc.1`
-（三条预发布线各自显式列出——semver 规定预发布版本只有在同 tuple 的比较符也带预发布时才满足，所以 Web CLI 的 0.1.7-rc.2 必须靠 `^0.1.7-alpha.1` 覆盖，桌面端的 0.2.0-rc.2 靠 `^0.2.0-rc.1`）；`@deepseek-ai/cordis: ^4.0.1` 覆盖 4.0.4。实测 0.1.0-rc.7 / 0.1.7-rc.2 / 0.2.0-rc.2 三者都满足。
-
-只读验证（在生产库 `prod_WMS` / `demo_erp` 上完成，期间**没有任何写操作**）：
-
-- `mssql_sources`：12 个源；输出键为 id/description/server/port/database/user/hasPassword/writable/allowDdl，无 `password` 字段、无密码值；
-- `mssql_sources probe: true`：12/12 `reachable: true`，版本如上表；
-- `mssql_databases`：列出 31 个库；
-- `mssql_tables filter: "Log"`：14 张表/视图（含 `Sys_Interface_log_2026W38`～`W41` 及行数估算）；
-- `mssql_schema dbo.Sys_Log`：16 列完整结构（类型/长度/可空/IDENTITY/默认值）；
-- `mssql_query`：`@p0` 绑定参数正确回传；单条 SELECT 返回 `{ columns, rows, truncated, rowCount }`。
-
-DSH 会话内验证：另建一个 headless profile（bundles: `@deepseek-ai/dsh-base` + `@deepseek-ai/dsh-headless`），
-用上面的 `link:` recipe 装上本插件后跑 `dsh --profile <p> --json "<任务>"`，
-会话事件里 `mssql_sources` / `mssql_tables` 两个工具被正常调用并返回生产数据——即插件确实被 DSH 加载、6 个工具已注册。
-
-守卫链验证（写通道只用「被拒绝」验证，未对任何库执行写）：
-
-| 用例 | 结果 |
-| --- | --- |
-| 只读源 + `mssql_query` 传 `INSERT` | 拒绝：只读通道仅放行 SELECT / WITH / VALUES |
-| 只读源 + `mssql_execute(allowWrite: true)` | 拒绝：源是只读的（writable 未开启） |
-| writable 源 + `mssql_execute` 传 `SELECT` | 拒绝：写通道只接受 INSERT / UPDATE / DELETE / MERGE |
-| writable 源 + DDL 但源未开 `allowDdl` | 拒绝：当前源未开启 allowDdl |
-| `mssql_execute` 缺 `allowWrite` | `ToolArgsError: missing required property "allowWrite"`（dsh-tools 参数校验层直接拦下） |
-| 分号分隔的多语句 | 拒绝：只读通道只接受单条语句 |
-| 字面量里的分号（`SELECT ';'`） | 放行（先剥离字符串/注释再判定，不误伤） |
-| 未知 source | `未知数据源 nope；可用: …` |
-
-## 已知限制
-
-- **写通道默认单条语句**：需要批量脚本时给源开 `allowBatch: true`；
-- 元数据查询依赖 `sys.*` 视图，账号若无 `VIEW DEFINITION` 会返回空列表；
-- 连接池按源缓存，改配置里的主机/账号后需重启 DSH 才换池（`sources.json` 变更只影响源清单，不影响已建立的池）；
-- `encrypt: false` 时流量不加密，跨公网请用 `encrypt: true`。
 
 ## 开发
 
@@ -262,14 +274,24 @@ npm install
 npm run check   # typecheck + vitest + tsc 构建
 ```
 
-- `src/mssql-core.ts` —— 纯函数：SQL 白名单/禁词、标识符与类型格式化、源清单校验、凭据解析（全部可单测）；
-- `src/dsn.ts` —— 连接字符串 ⇄ 源配置（`sqlserver://` 与 ADO 两种写法、密码掩码）；
-- `src/settings-store.ts` —— `sources.json` 的原子读写与增删改；
-- `src/pool.ts` —— 连接池、查询/写执行、系统目录元数据查询；
+- `src/core.ts` —— 纯函数：引擎元数据、源清单校验、类型格式化、凭据解析、路径约定；
+- `src/sql-guard.ts` —— 方言无关的 SQL 护栏（白名单 / 单语句 / 写闸门 / 提权禁词，全部可单测）；
+- `src/engines/{sqlserver,postgres,mysql}.ts` —— 各引擎适配器（连接、查询、写、元数据）；
+- `src/pool.ts` —— 连接池缓存与统一执行层；
+- `src/dsn.ts` —— 连接字符串 ⇄ 源配置（三种 scheme + ADO 写法 + 掩码）；
+- `src/settings-store.ts` —— `sources.json` / `config.json` 的原子读写、增删改、老清单迁移；
 - `src/index.ts` —— 插件入口，注册 6 个工具；
-- `src/settings-rpc.ts` —— 设置页的宿主侧 RPC 路由；
-- `client/client.js` —— 浏览器侧设置页标签页（单文件客户端半区，无构建步骤）；
-- `tests/` —— vitest：SQL 守卫 + 连接字符串/清单增删改。
+- `src/settings-rpc.ts` —— 标签页 / 设置页的宿主侧 RPC（`sources/*` + `query/run` + `console/save`）；
+- `client/client.js` —— 浏览器侧单文件客户端（会话标签页 + 设置页节，无构建步骤）；
+- `tests/` —— vitest：SQL 守卫、清单校验、连接字符串、控制台配置、迁移。
+
+## 已知限制
+
+- **写通道默认单条语句**：需要批量脚本时给源开 `allowBatch: true`；
+- 元数据查询依赖各引擎的系统目录视图，账号若无元数据可见性权限会返回空列表；
+- 连接池按「引擎 + 源 id + 主机 + 端口 + 库 + 账号」缓存，改这几项后要重启 DSH 才换池
+  （改 `sources.json` 的密码/开关不影响已建立的池）；
+- `ssl: false` 时流量不加密，跨公网请打开 TLS。
 
 ## 许可
 

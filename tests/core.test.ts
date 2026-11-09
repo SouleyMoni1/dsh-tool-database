@@ -1,25 +1,24 @@
 import { describe, expect, it } from 'vitest'
 import {
-  DEFAULT_PORT,
-  assertReadonlySql,
-  assertWriteSql,
   clampLimit,
   describeSource,
+  engineInfo,
   formatColumnType,
+  normalizeValue,
+  parseSources,
+  parseTableRef,
+  resolvePassword,
+  serializeRows,
+} from '../src/core.ts'
+import {
+  assertReadonlySql,
+  assertWriteSql,
   isDdlSql,
   isReadonlySql,
   isSingleStatement,
   isWriteSql,
-  normalizeValue,
-  parseSources,
-  parseTableRef,
-  quoteIdent,
-  quoteQualified,
-  resolvePassword,
-  serializeRows,
   stripLiterals,
-  toMssqlConfig,
-} from '../src/mssql-core.ts'
+} from '../src/sql-guard.ts'
 
 describe('isReadonlySql', () => {
   it('allows read-only statements', () => {
@@ -43,7 +42,7 @@ describe('isReadonlySql', () => {
     expect(isReadonlySql('SELECT * INTO #tmp FROM users')).toBe(false)
     expect(isReadonlySql('SELECT * INTO dbo.copy FROM users')).toBe(false)
     expect(isReadonlySql('EXEC sp_who')).toBe(false)
-    expect(isReadonlySql('SELECT * FROM OPENROWSET(\'SQLNCLI\', \'x\', \'y\')')).toBe(false)
+    expect(isReadonlySql("SELECT * FROM OPENROWSET('SQLNCLI', 'x', 'y')")).toBe(false)
   })
 
   it('rejects multi-statement input', () => {
@@ -56,6 +55,7 @@ describe('isReadonlySql', () => {
     expect(isReadonlySql("SELECT 'DELETE FROM t' AS sample")).toBe(true)
     expect(isReadonlySql('SELECT a FROM t -- DROP TABLE t')).toBe(true)
     expect(isReadonlySql('SELECT [update] FROM t')).toBe(true)
+    expect(isReadonlySql('SELECT `update` FROM t')).toBe(true)
     expect(isReadonlySql("SELECT a FROM t WHERE b = ';'")).toBe(true)
     expect(isSingleStatement("SELECT ';' AS s")).toBe(true)
   })
@@ -96,12 +96,8 @@ describe('write channel guards', () => {
     expect(() =>
       assertWriteSql('INSERT INTO t (a) VALUES (1)', { allowDdl: false, allowBatch: false }),
     ).not.toThrow()
-    expect(() =>
-      assertWriteSql('DROP TABLE t', { allowDdl: false, allowBatch: false }),
-    ).toThrow(/allowDdl/)
-    expect(() =>
-      assertWriteSql('DROP TABLE t', { allowDdl: true, allowBatch: false }),
-    ).not.toThrow()
+    expect(() => assertWriteSql('DROP TABLE t', { allowDdl: false, allowBatch: false })).toThrow(/allowDdl/)
+    expect(() => assertWriteSql('DROP TABLE t', { allowDdl: true, allowBatch: false })).not.toThrow()
     expect(() =>
       assertWriteSql('INSERT INTO t (a) VALUES (1); INSERT INTO t (a) VALUES (2)', {
         allowDdl: false,
@@ -117,37 +113,30 @@ describe('write channel guards', () => {
   })
 
   it('rejects privilege escalation and non-write statements', () => {
-    expect(() =>
-      assertWriteSql("EXEC xp_cmdshell 'dir'", { allowDdl: true, allowBatch: true }),
-    ).toThrow(/写通道|提权/)
-    expect(() =>
-      assertWriteSql('SELECT 1', { allowDdl: false, allowBatch: false }),
-    ).toThrow(/写通道/)
+    expect(() => assertWriteSql("EXEC xp_cmdshell 'dir'", { allowDdl: true, allowBatch: true })).toThrow(/写通道|提权/)
+    expect(() => assertWriteSql('SELECT 1', { allowDdl: false, allowBatch: false })).toThrow(/写通道/)
   })
 })
 
-describe('identifier handling', () => {
-  it('quotes identifiers', () => {
-    expect(quoteIdent('users')).toBe('[users]')
-    expect(quoteIdent('we]ird')).toBe('[we]]ird]')
-    expect(quoteQualified('dbo.users')).toBe('[dbo].[users]')
-    expect(quoteQualified('users')).toBe('[dbo].[users]')
-  })
+describe('table references', () => {
   it('parses table references', () => {
     expect(parseTableRef('users')).toEqual({ schema: 'dbo', name: 'users' })
     expect(parseTableRef('sales.orders')).toEqual({ schema: 'sales', name: 'orders' })
     expect(parseTableRef('[sales].[orders]')).toEqual({ schema: 'sales', name: 'orders' })
+    expect(parseTableRef('"public"."users"')).toEqual({ schema: 'public', name: 'users' })
+    expect(parseTableRef('users', 'public')).toEqual({ schema: 'public', name: 'users' })
     expect(() => parseTableRef('')).toThrow(/不能为空/)
   })
 })
 
 describe('formatColumnType', () => {
-  it('renders length and precision', () => {
+  it('renders length and precision per engine', () => {
     expect(formatColumnType({ type: 'nvarchar', max_length: 100 })).toBe('nvarchar(50)')
     expect(formatColumnType({ type: 'nvarchar', max_length: -1 })).toBe('nvarchar(max)')
     expect(formatColumnType({ type: 'varchar', max_length: 50 })).toBe('varchar(50)')
     expect(formatColumnType({ type: 'decimal', precision: 18, scale: 2 })).toBe('decimal(18,2)')
     expect(formatColumnType({ type: 'int' })).toBe('int')
+    expect(formatColumnType({ type: 'varchar', max_length: 32, engine: 'postgres' })).toBe('varchar(32)')
   })
 })
 
@@ -166,15 +155,17 @@ describe('normalizeValue', () => {
 
 describe('serializeRows', () => {
   it('caps rows and reports truncation', () => {
-    const rows = [{ a: 1, b: 'x' }, { a: 2, b: 'y' }]
+    const rows = [
+      [1, 'x'],
+      [2, 'y'],
+    ]
     const r = serializeRows(rows, ['a', 'b'], 1)
     expect(r.columns).toEqual(['a', 'b'])
     expect(r.rows).toEqual([[1, 'x']])
     expect(r.truncated).toBe(true)
     expect(r.rowCount).toBe(2)
   })
-  it('falls back to row keys and keeps column order when empty', () => {
-    expect(serializeRows([{ b: 1, a: 2 }], [], 10).columns).toEqual(['b', 'a'])
+  it('keeps column order when empty', () => {
     expect(serializeRows([], ['a', 'b'], 10)).toEqual({
       columns: ['a', 'b'],
       rows: [],
@@ -195,15 +186,24 @@ describe('clampLimit', () => {
 })
 
 describe('parseSources', () => {
-  const good = { id: 'prod_WMS', server: '10.0.0.9', database: 'demo_erp', user: 'reader' }
+  const good = { id: 'prod_WMS', host: '10.0.0.9', database: 'demo_erp', user: 'reader' }
 
   it('normalizes a valid list', () => {
     const [s] = parseSources([good])
-    expect(s).toMatchObject({ id: 'prod_WMS', server: '10.0.0.9', port: DEFAULT_PORT })
+    expect(s).toMatchObject({ id: 'prod_WMS', host: '10.0.0.9', port: 1433, engine: 'sqlserver' })
     expect(s?.writable).toBe(false)
     expect(s?.allowDdl).toBe(false)
     expect(s?.encrypt).toBe(false)
     expect(s?.trustServerCertificate).toBe(true)
+  })
+
+  it('accepts the legacy "server" key and engine-specific default ports', () => {
+    const [legacy] = parseSources([{ id: 'old', server: '10.0.0.9' }])
+    expect(legacy).toMatchObject({ host: '10.0.0.9', server: '10.0.0.9', port: 1433 })
+    const [pg] = parseSources([{ id: 'pg', engine: 'postgres', host: 'db', database: 'app' }])
+    expect(pg?.port).toBe(engineInfo('postgres').defaultPort)
+    const [my] = parseSources([{ id: 'my', engine: 'mysql', host: 'db' }])
+    expect(my?.port).toBe(3306)
   })
 
   it('honours explicit switches', () => {
@@ -213,21 +213,22 @@ describe('parseSources', () => {
 
   it('fails fast on bad input', () => {
     expect(() => parseSources({})).toThrow(/必须是数组/)
-    expect(() => parseSources([{ server: 'x' }])).toThrow(/id 不能为空/)
+    expect(() => parseSources([{ host: 'x' }])).toThrow(/id 不能为空/)
     expect(() => parseSources([good, good])).toThrow(/id 重复/)
-    expect(() => parseSources([{ id: 'a' }])).toThrow(/缺少 server/)
+    expect(() => parseSources([{ id: 'a' }])).toThrow(/缺少 host/)
     expect(() => parseSources([{ ...good, port: 0 }])).toThrow(/port 非法/)
+    expect(() => parseSources([{ ...good, engine: 'oracle' }])).toThrow(/engine 不支持/)
   })
 })
 
 describe('credential boundary', () => {
   const source = parseSources([
-    { id: 'prod', server: 'h', user: 'u', password: 'plain', passwordEnv: 'MSSQL_PROD_PW' },
+    { id: 'prod', host: 'h', engine: 'postgres', user: 'u', password: 'plain', passwordEnv: 'MSSQL_PROD_PW' },
   ])[0]!
 
   it('never exposes the password in the model-facing view', () => {
     const view = describeSource(source)
-    expect(view).toMatchObject({ id: 'prod', hasPassword: true, writable: false })
+    expect(view).toMatchObject({ id: 'prod', engine: 'postgres', hasPassword: true, writable: false })
     expect(JSON.stringify(view)).not.toContain('plain')
     expect(JSON.stringify(view)).not.toContain('MSSQL_PROD_PW')
   })
@@ -235,21 +236,7 @@ describe('credential boundary', () => {
   it('prefers passwordEnv and fails loudly when it is missing', () => {
     expect(resolvePassword(source, { MSSQL_PROD_PW: 'from-env' })).toBe('from-env')
     expect(() => resolvePassword(source, {})).toThrow(/MSSQL_PROD_PW/)
-    const plainOnly = parseSources([{ id: 'dev', server: 'h', password: 'devpw' }])[0]!
+    const plainOnly = parseSources([{ id: 'dev', host: 'h', password: 'devpw' }])[0]!
     expect(resolvePassword(plainOnly, {})).toBe('devpw')
-  })
-})
-
-describe('toMssqlConfig', () => {
-  it('maps plugin config onto the mssql driver config', () => {
-    const source = parseSources([{ id: 'dev', server: 'h', database: 'db', user: 'u' }])[0]!
-    const cfg = toMssqlConfig(source, 'pw')
-    expect(cfg).toMatchObject({ server: 'h', port: 1433, database: 'db', user: 'u', password: 'pw' })
-    expect(cfg.options).toEqual({
-      encrypt: false,
-      trustServerCertificate: true,
-      enableArithAbort: true,
-    })
-    expect(cfg.requestTimeout).toBeGreaterThan(0)
   })
 })

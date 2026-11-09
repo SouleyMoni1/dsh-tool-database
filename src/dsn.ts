@@ -1,15 +1,17 @@
 /**
  * 连接字符串 ⇄ 源配置的互转（纯函数，可单测）。
  *
- * 支持两种写法：
- *   sqlserver://user:pass@host:1433/db          （推荐；mssql:// / tds:// 亦可）
- *   Server=host,1433;Database=db;User Id=u;Password=p;   （ADO / ODBC 风格）
+ * 支持：
+ *   sqlserver://user:pass@host:1433/db      （mssql:// / tds:// 亦可）
+ *   postgres://user:pass@host:5432/db       （postgresql:// / pg:// 亦可）
+ *   mysql://user:pass@host:3306/db
+ *   Server=host,1433;Database=db;User Id=u;Password=p;   （ADO 风格，仅 SQL Server）
  *
  * 密码里的特殊字符请用百分号编码：p@ss → p%40ss。
  * 展示时密码换成 PASSWORD_SENTINEL、环境变量引用换成 ${ENV} 占位；原样回传即表示「密码不变」。
  */
 
-import { DEFAULT_PORT, type SourceConfig } from './mssql-core.js'
+import { engineInfo, engineOf, type EngineKind, type SourceConfig } from './core.js'
 
 /** 掩码哨兵：设置页回传该值时保留原密码。 */
 export const PASSWORD_SENTINEL = '******'
@@ -17,8 +19,25 @@ export const PASSWORD_SENTINEL = '******'
 /** ${ENV_NAME} 形式的密码引用。 */
 const ENV_SECRET = /^\$\{([A-Za-z_][A-Za-z0-9_]*)\}$/
 
+const SCHEME_ENGINE: Record<string, EngineKind> = {
+  sqlserver: 'sqlserver',
+  mssql: 'sqlserver',
+  tds: 'sqlserver',
+  postgres: 'postgres',
+  postgresql: 'postgres',
+  pg: 'postgres',
+  mysql: 'mysql',
+}
+
+const ENGINE_SCHEME: Record<EngineKind, string> = {
+  sqlserver: 'sqlserver',
+  postgres: 'postgres',
+  mysql: 'mysql',
+}
+
 export interface ParsedDsn {
-  server: string
+  engine: EngineKind
+  host: string
   port: number
   database?: string
   user?: string
@@ -31,11 +50,11 @@ function str(value: string | undefined): string | undefined {
   return trimmed ? trimmed : undefined
 }
 
-function checkPort(raw: string | undefined, dsn: string): number {
-  if (!str(raw)) return DEFAULT_PORT
+function checkPort(raw: string | number | undefined, dsn: string, fallback: number): number {
+  if (raw === undefined || raw === '' || raw === null) return fallback
   const port = Number(raw)
   if (!Number.isInteger(port) || port <= 0 || port > 65535) {
-    throw new Error('mssql: 连接字符串里的端口非法: ' + dsn)
+    throw new Error('db: 连接字符串里的端口非法: ' + dsn)
   }
   return port
 }
@@ -44,11 +63,11 @@ function decode(value: string): string {
   try {
     return decodeURIComponent(value)
   } catch {
-    throw new Error('mssql: 连接字符串里的百分号编码非法')
+    throw new Error('db: 连接字符串里的百分号编码非法')
   }
 }
 
-/** Server=host,1433;Database=db;User Id=u;Password=p 形式。 */
+/** Server=host,1433;Database=db;User Id=u;Password=p 形式（仅 SQL Server）。 */
 function parseAdoDsn(raw: string): ParsedDsn {
   const parts = new Map<string, string>()
   for (const segment of raw.split(';')) {
@@ -59,14 +78,15 @@ function parseAdoDsn(raw: string): ParsedDsn {
     if (value) parts.set(key, value)
   }
   const address = str(parts.get('server') ?? parts.get('datasource') ?? parts.get('address'))
-  if (!address) throw new Error('mssql: 连接字符串缺少 Server= 主机: ' + raw)
+  if (!address) throw new Error('db: 连接字符串缺少 Server= 主机: ' + raw)
   const comma = address.lastIndexOf(',')
   const host = comma > 0 ? address.slice(0, comma).trim() : address
-  const port = comma > 0 ? address.slice(comma + 1) : (parts.get('port') ?? undefined)
-  if (!host) throw new Error('mssql: 连接字符串缺少主机名: ' + raw)
+  const port = comma > 0 ? address.slice(comma + 1) : parts.get('port')
+  if (!host) throw new Error('db: 连接字符串缺少主机名: ' + raw)
   return {
-    server: host,
-    port: checkPort(port, raw),
+    engine: 'sqlserver',
+    host,
+    port: checkPort(port, raw, engineInfo('sqlserver').defaultPort),
     database: str(parts.get('database') ?? parts.get('initialcatalog')),
     user: str(parts.get('userid') ?? parts.get('uid') ?? parts.get('user')),
     password: str(parts.get('password') ?? parts.get('pwd')),
@@ -76,48 +96,46 @@ function parseAdoDsn(raw: string): ParsedDsn {
 /** 解析连接字符串。 */
 export function parseDsn(dsn: string): ParsedDsn {
   const raw = String(dsn ?? '').trim()
-  if (!raw) throw new Error('mssql: 连接字符串不能为空')
+  if (!raw) throw new Error('db: 连接字符串不能为空')
   if (!/^[A-Za-z][A-Za-z0-9+.-]*:\/\//.test(raw)) return parseAdoDsn(raw)
-
   let url: URL
   try {
     url = new URL(raw)
   } catch {
-    throw new Error('mssql: 连接字符串无法解析: ' + raw)
+    throw new Error('db: 连接字符串无法解析: ' + raw)
   }
-  const scheme = url.protocol.slice(0, -1).toLowerCase()
-  if (!['sqlserver', 'mssql', 'tds'].includes(scheme)) {
-    throw new Error('mssql: 不支持的协议 ' + scheme + '://；请用 sqlserver://')
-  }
-  if (!url.hostname) throw new Error('mssql: 连接字符串缺少主机名: ' + raw)
-  const encodedPassword = url.password
+  const scheme = url.protocol.replace(/:$/, '').toLowerCase()
+  const engine = SCHEME_ENGINE[scheme]
+  if (!engine) throw new Error('db: 不支持的连接串前缀 ' + scheme + '://')
+  const host = url.hostname
+  if (!host) throw new Error('db: 连接字符串缺少主机名: ' + raw)
+  const database = str(url.pathname.replace(/^\//, ''))
   return {
-    server: url.hostname,
-    port: checkPort(url.port, raw),
-    database: str(decode(url.pathname.replace(/^\//, ''))),
-    user: str(url.username ? decode(url.username) : undefined),
-    password: encodedPassword ? decode(encodedPassword) : undefined,
+    engine,
+    host,
+    port: checkPort(url.port, raw, engineInfo(engine).defaultPort),
+    database,
+    user: url.username ? decode(url.username) : undefined,
+    password: url.password ? decode(url.password) : undefined,
   }
 }
 
-/** 源配置组装成连接字符串：mask 只回显占位（列表用），否则带明文密码（编辑表单用）。 */
-export function formatDsn(source: SourceConfig, opts: { mask?: boolean } = {}): string {
-  const port = source.port ?? DEFAULT_PORT
-  const envOpen = '$' + '{'
-  // ${ENV} 占位不做百分号编码，否则回传时解析不回环境变量名。
-  let secret: string | undefined
-  if (source.passwordEnv) {
-    secret = envOpen + source.passwordEnv + '}'
-  } else if (source.password !== undefined) {
-    secret = opts.mask ? PASSWORD_SENTINEL : encodeURIComponent(source.password)
-  }
+/** 源配置 → 连接字符串；mask=true 时密码换成哨兵。 */
+export function formatDsn(source: SourceConfig, options: { mask?: boolean } = {}): string {
+  const engine = engineOf(source)
+  const scheme = ENGINE_SCHEME[engine]
+  const port = source.port ?? engineInfo(engine).defaultPort
   const user = source.user ? encodeURIComponent(source.user) : ''
-  const auth = user ? user + (secret === undefined ? '' : ':' + secret) + '@' : ''
-  const database = source.database ? '/' + encodeURIComponent(source.database) : ''
-  return 'sqlserver://' + auth + source.server + ':' + String(port) + database
+  let secret = ''
+  if (source.passwordEnv) secret = '${' + source.passwordEnv + '}'
+  else if (source.password) secret = encodeURIComponent(options.mask === true ? PASSWORD_SENTINEL : source.password)
+  const auth = user || secret ? user + (secret ? ':' + secret : '') + '@' : ''
+  return scheme + '://' + auth + source.host + ':' + String(port) + (source.database ? '/' + source.database : '')
 }
 
-/** ${ENV} 密码引用 → 变量名；不是引用则返回 undefined。 */
-export function envNameOf(password: string | undefined): string | undefined {
-  return password === undefined ? undefined : ENV_SECRET.exec(password)?.[1]
+/** ${ENV_NAME} → ENV_NAME；不是这种写法返回 undefined。 */
+export function envNameOf(value: string | undefined): string | undefined {
+  const raw = String(value ?? '').trim()
+  const m = ENV_SECRET.exec(raw)
+  return m?.[1]
 }

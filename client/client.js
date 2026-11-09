@@ -1,15 +1,19 @@
 /**
- * dsh-tool-mssql 浏览器半区 —— 设置页「SQL Server 数据源」标签页。
+ * dsh-tool-database 浏览器半区。
+ *
+ * 两个落点：
+ *   1. 会话顶部标签页「数据库」（conversation.view）：左连接列表 + 右查询控制台 / 连接表单；
+ *   2. 设置页「数据库」节（settings.section）：控制台默认行数与写策略。
  *
  * 形态说明：DSH 客户端插件必须是单文件、且以 window.__ModuleLoader__.load({ id, factory })
- * 注册工厂；运行时只注入 9 个平台 seed（react / react-dom / @deepseek-ai/cordis /
+ * 注册工厂；运行时只注入平台 seed（react / react-dom / @deepseek-ai/cordis /
  * @deepseek-ai/dsh-client-ui-* 等），所以这里只 require react 与官方控件库，其余零依赖。
  *
- * 数据流：fetch POST /api/dsh-tool-mssql（connection 的精确 Fetch 路由，自动带同源围栏），
+ * 数据流：fetch POST /api/dsh-tool-database（connection 的精确 Fetch 路由，自动带同源围栏），
  * 信封 { channel, endpoint, payload }，宿主侧见 src/settings-rpc.ts。
  */
 window.__ModuleLoader__.load({
-  id: 'dsh-tool-mssql',
+  id: 'dsh-tool-database',
   factory: (require) => {
     var module = { exports: {} }
     var exports = module.exports
@@ -23,110 +27,149 @@ window.__ModuleLoader__.load({
     const Switch = primitives.Switch
 
     /** 路由与通道必须与 src/settings-rpc.ts 一致。 */
-    const RPC_PATH = '/api/dsh-tool-mssql'
+    const RPC_PATH = '/api/dsh-tool-database'
     /** locale 命名空间。 */
-    const NS = 'dsh-tool-mssql'
-    /** 标签页 id：不要用 official 的 general/models/plugins/account/agent-presets。 */
-    const SECTION_ID = 'mssql-sources'
+    const NS = 'dsh-tool-database'
+    /** 设置页标签页 id。 */
+    const SECTION_ID = 'database-sources'
+    /** 会话标签页 id。 */
+    const VIEW_ID = 'database'
 
     const zh = {
-      nav: 'SQL Server 数据源',
-      title: 'SQL Server 数据源',
-      intro: 'mssql_* 工具读的就是这份清单。这里的改动直接写回清单文件，即时生效，不用重启。',
-      file: '清单文件',
-      add: '新增数据源',
-      reload: '重新加载',
-      sortLabel: '排序',
-      sortId: '按别名',
-      sortDescription: '按描述',
-      sortDefault: '文件顺序',
-      sortHint: '再点一次切换升序 / 降序',
-      loading: '加载中…',
-      retry: '重试',
-      empty: '还没有数据源，点「新增数据源」开始。',
-      configDriven:
-        '当前数据源来自插件 config.sources（cordis.patch.yml），本页改动不会生效 —— 先把它清空再用本页维护。',
-      readonly: '只读',
-      writable: '可写',
-      ddlTag: 'DDL',
+      view: '数据库',
+      nav: '数据库连接',
+      title: '数据库连接与查询',
+      intro: '左侧管理连接（SQL Server / PostgreSQL / MySQL），右侧直接跑 SQL。改动写回宿主侧清单文件，即时生效。',
+      search: '搜索连接 / 主机 / 库',
+      add: '新建连接',
+      reload: '刷新',
+      empty: '还没有连接，点「新建连接」开始。',
+      pick: '从左侧选一个连接，或新建一个。',
+      engineHint: '支持 SQL Server / PostgreSQL / MySQL。连接与密码只留在本机宿主进程里，模型看到的是源句柄与查询结果，永远拿不到密码。',
+      configDriven: '当前连接来自插件 config.sources，本页改动不生效；先清空 config.sources。',
+      engine: '引擎',
+      idLabel: '别名（id）',
+      idHint: '工具用 source=<别名> 指定它；字母/数字/下划线/点/连字符。',
+      descLabel: '描述',
+      host: '主机',
+      port: '端口',
+      database: '数据库',
+      user: '账号',
+      password: '密码',
+      passwordHint: '留空保持原密码；写 ${环境变量名} 表示从环境变量读取（推荐）。',
+      ssl: 'TLS / SSL',
+      writable: '允许写入',
+      writableHint: '打开后 db_execute 才能写（仍需显式 allowWrite）。',
+      allowDdl: '允许 DDL',
+      ddlHint: '额外放行 CREATE / ALTER / DROP / TRUNCATE。',
       test: '测试连接',
       testing: '连接中…',
-      edit: '编辑',
-      remove: '删除',
-      confirmRemove: '确认删除',
-      cancel: '取消',
       save: '保存',
       saving: '保存中…',
-      newTitle: '新增数据源',
-      editTitle: '编辑数据源',
-      idLabel: '别名（id）',
-      idHint: '其他工具用 source=<别名> 指定它；字母/数字/下划线/点/连字符。',
-      descLabel: '描述',
-      descHint: '给人看的一行说明，可留空。',
-      dsnLabel: '连接字符串',
-      dsnHint:
-        'sqlserver://账号:密码@主机:1433/库名。这里直接显示明文密码（@ : / ? # 等字符已按百分号编码），改完保存即生效；列表里仍显示为 ******。想不落盘就写 ${环境变量名}。',
-      writableLabel: '允许写入',
-      writableHint: '打开后 mssql_execute 才能对它执行 INSERT/UPDATE/DELETE/MERGE（仍需显式 allowWrite）。',
-      ddlLabel: '允许 DDL',
-      ddlHint: '额外放行 CREATE/ALTER/DROP/TRUNCATE。',
+      remove: '删除',
+      confirmRemove: '确认删除？',
+      cancel: '取消',
+      advanced: '高级：直接用连接字符串',
+      dsn: '连接字符串',
+      dsnHint: 'sqlserver:// / postgres:// / mysql:// 账号:密码@主机:端口/库名。填了这一项就忽略上面的主机表单。',
+      newTitle: '新建连接',
+      editTitle: '连接设置',
       saved: '已保存。',
       removed: '已删除。',
       testOK: '连接成功',
+      query: '查询',
+      sql: 'SQL',
+      sqlHint: 'Ctrl / Cmd + Enter 执行。只读连接只能 SELECT；写语句受「控制台写策略」和数据源开关双重限制。',
+      run: '执行',
+      running: '执行中…',
+      rows: '行',
+      elapsed: '耗时',
+      truncated: '已截断（超过行数上限）',
+      writeMode: '控制台写策略',
+      writeModeSource: '跟随数据源（推荐）',
+      writeModeReadonly: '一律只读',
+      writeModeAlways: '始终允许写',
+      limit: '默认行数',
+      consoleSaving: '保存中…',
+      consoleSaved: '已保存。',
+      consoleTitle: '控制台设置',
+      file: '清单文件',
+      settingsIntro: '连接管理在会话顶部的「数据库」标签页里；这里只放控制台的全局参数。',
+      wrote: '已执行',
+      affected: '影响行数',
+      result: '结果',
     }
 
     const en = {
-      nav: 'SQL Server',
-      title: 'SQL Server data sources',
-      intro: 'The mssql_* tools read this list. Edits are written straight back to the list file and apply immediately — no restart.',
-      file: 'List file',
-      add: 'Add source',
+      view: 'Database',
+      nav: 'Database connections',
+      title: 'Database connections & query',
+      intro: 'Manage connections (SQL Server / PostgreSQL / MySQL) on the left, run SQL on the right. Changes are written back to the host list file immediately.',
+      search: 'Search id / host / database',
+      add: 'New connection',
       reload: 'Reload',
-      sortLabel: 'Sort',
-      sortId: 'Alias',
-      sortDescription: 'Description',
-      sortDefault: 'File order',
-      sortHint: 'Click again to toggle ascending / descending',
-      loading: 'Loading…',
-      retry: 'Retry',
-      empty: 'No data source yet — start with “Add source”.',
-      configDriven:
-        'Sources come from the plugin config.sources (cordis.patch.yml); edits on this page have no effect until that is emptied.',
-      readonly: 'read-only',
-      writable: 'writable',
-      ddlTag: 'DDL',
+      empty: 'No connection yet — start with “New connection”.',
+      pick: 'Pick a connection on the left, or create one.',
+      engineHint: 'Supports SQL Server / PostgreSQL / MySQL. Connections and passwords stay in the local host process; the model only sees source handles and query results.',
+      configDriven: 'Connections come from the plugin config.sources; edits here have no effect until that is emptied.',
+      engine: 'Engine',
+      idLabel: 'Alias (id)',
+      idHint: 'Tools address it with source=<alias>; letters / digits / underscore / dot / hyphen.',
+      descLabel: 'Description',
+      host: 'Host',
+      port: 'Port',
+      database: 'Database',
+      user: 'User',
+      password: 'Password',
+      passwordHint: 'Leave empty to keep the current password; use ${ENV_NAME} to read it from the environment (recommended).',
+      ssl: 'TLS / SSL',
+      writable: 'Writable',
+      writableHint: 'db_execute can write only when this is on (and allowWrite is explicit).',
+      allowDdl: 'Allow DDL',
+      ddlHint: 'Also allow CREATE / ALTER / DROP / TRUNCATE.',
       test: 'Test',
       testing: 'Connecting…',
-      edit: 'Edit',
-      remove: 'Delete',
-      confirmRemove: 'Confirm',
-      cancel: 'Cancel',
       save: 'Save',
       saving: 'Saving…',
-      newTitle: 'New source',
-      editTitle: 'Edit source',
-      idLabel: 'Alias (id)',
-      idHint: 'Other tools select it with source=<alias>; letters/digits/._- only.',
-      descLabel: 'Description',
-      descHint: 'One human-readable line; may be empty.',
-      dsnLabel: 'Connection string',
-      dsnHint:
-        'sqlserver://user:password@host:1433/database. The real password is shown here (@ : / ? # appear percent-encoded); the list still shows ******. Use ${ENV_VAR} to keep it out of the file.',
-      writableLabel: 'Allow writes',
-      writableHint: 'Lets mssql_execute run INSERT/UPDATE/DELETE/MERGE here (allowWrite is still required).',
-      ddlLabel: 'Allow DDL',
-      ddlHint: 'Additionally allows CREATE/ALTER/DROP/TRUNCATE.',
+      remove: 'Delete',
+      confirmRemove: 'Delete this connection?',
+      cancel: 'Cancel',
+      advanced: 'Advanced: use a connection string',
+      dsn: 'Connection string',
+      dsnHint: 'sqlserver:// / postgres:// / mysql:// user:password@host:port/database. When filled, the fields above are ignored.',
+      newTitle: 'New connection',
+      editTitle: 'Connection settings',
       saved: 'Saved.',
       removed: 'Deleted.',
       testOK: 'Connected',
+      query: 'Query',
+      sql: 'SQL',
+      sqlHint: 'Ctrl / Cmd + Enter to run. Read-only connections can only SELECT; writes are gated by the console policy and the source switches.',
+      run: 'Run',
+      running: 'Running…',
+      rows: 'rows',
+      elapsed: 'took',
+      truncated: 'Truncated (row limit reached)',
+      writeMode: 'Console write policy',
+      writeModeSource: 'Follow the source (recommended)',
+      writeModeReadonly: 'Always read-only',
+      writeModeAlways: 'Always allow writes',
+      limit: 'Default rows',
+      consoleSaving: 'Saving…',
+      consoleSaved: 'Saved.',
+      consoleTitle: 'Console settings',
+      file: 'List file',
+      settingsIntro: 'Connections live in the “Database” tab at the top of a session; this page only holds console-wide defaults.',
+      wrote: 'Executed',
+      affected: 'Rows affected',
+      result: 'Result',
     }
 
-    /** 打宿主 RPC；失败一律抛 Error（含宿主给的中文原因）。 */
     async function call(endpoint, payload) {
       const response = await fetch(RPC_PATH, {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ channel: RPC_PATH, endpoint, payload }),
+        body: JSON.stringify({ channel: RPC_PATH, endpoint: endpoint, payload: payload || {} }),
       })
       if (!response.ok) throw new Error('HTTP ' + response.status)
       const result = await response.json()
@@ -144,135 +187,287 @@ window.__ModuleLoader__.load({
       styled = true
       const style = document.createElement('style')
       style.textContent = [
-        '.msx-root{display:flex;flex-direction:column;gap:16px;font-size:13px;color:var(--dsw-alias-label-primary,inherit)}',
-        '.msx-title{font-size:15px;font-weight:600;margin:0}',
-        '.msx-hint{color:var(--dsw-alias-label-tertiary,color-mix(in srgb,currentColor 55%,transparent));font-size:12px;line-height:1.5;margin:4px 0 0}',
-        '.msx-path{font-family:var(--dsw-font-markdown-code-block,ui-monospace,SFMono-Regular,Menlo,monospace);font-size:12px;color:var(--dsw-alias-label-secondary,color-mix(in srgb,currentColor 75%,transparent))}',
-        '.msx-bar{display:flex;align-items:center;gap:8px;flex-wrap:wrap}',
-        '.msx-sort{display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-left:4px}',
-        '.msx-list{display:flex;flex-direction:column;gap:8px}',
-        '.msx-row{border:1px solid var(--dsw-alias-border-l2,color-mix(in srgb,currentColor 14%,transparent));border-radius:var(--dsw-radius-md,10px);padding:10px 12px;display:flex;flex-direction:column;gap:8px}',
-        '.msx-rowhead{display:flex;align-items:center;gap:8px;flex-wrap:wrap}',
-        '.msx-id{font-weight:600;font-family:var(--dsw-font-markdown-code-block,ui-monospace,monospace)}',
-        '.msx-desc{color:var(--dsw-alias-label-secondary,color-mix(in srgb,currentColor 75%,transparent))}',
-        '.msx-tag{border:1px solid var(--dsw-alias-border-l3,color-mix(in srgb,currentColor 22%,transparent));border-radius:999px;padding:1px 8px;font-size:11px;color:var(--dsw-alias-label-tertiary,color-mix(in srgb,currentColor 55%,transparent))}',
-        '.msx-tag-write{color:var(--dsw-alias-state-success-primary,#2ea043);border-color:currentColor}',
-        '.msx-dsn{font-family:var(--dsw-font-markdown-code-block,ui-monospace,monospace);font-size:12px;word-break:break-all;color:var(--dsw-alias-label-secondary,color-mix(in srgb,currentColor 75%,transparent))}',
-        '.msx-actions{display:flex;gap:8px;flex-wrap:wrap;align-items:center}',
-        '.msx-card{border:1px solid var(--dsw-alias-border-l2,color-mix(in srgb,currentColor 14%,transparent));border-radius:var(--dsw-radius-md,10px);padding:12px;display:flex;flex-direction:column;gap:12px;background:var(--dsw-alias-bg-layer-1,transparent)}',
-        '.msx-card-title{font-weight:600}',
-        '.msx-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}',
-        '.msx-field{display:flex;flex-direction:column;gap:4px;min-width:0}',
-        '.msx-wide{grid-column:1/-1}',
-        '.msx-label{font-size:12px;color:var(--dsw-alias-label-secondary,color-mix(in srgb,currentColor 75%,transparent))}',
-        '.msx-note{font-size:12px;line-height:1.5}',
-        '.msx-ok{color:var(--dsw-alias-state-success-primary,#2ea043)}',
-        '.msx-err{color:var(--dsw-alias-state-error-primary,#d1242f)}',
-        '.msx-warn{border:1px solid var(--dsw-alias-state-warn-primary,#d4a72c);border-radius:var(--dsw-radius-sm,8px);padding:8px 10px;font-size:12px}',
-        '.msx-inline{display:flex;align-items:center;gap:8px}',
-        '.msx-empty{color:var(--dsw-alias-label-tertiary,color-mix(in srgb,currentColor 55%,transparent))}',
+        '.dbx-root{display:flex;height:100%;min-height:0;box-sizing:border-box;padding-bottom:128px;font-size:13px;color:var(--dsw-alias-label-primary,inherit)}',
+        '.dbx-side{width:268px;min-width:220px;display:flex;flex-direction:column;gap:8px;padding:12px 10px;border-right:1px solid var(--dsw-alias-border-l2,color-mix(in srgb,currentColor 14%,transparent));min-height:0}',
+        '.dbx-main{flex:1;min-width:0;display:flex;flex-direction:column;min-height:0}',
+        '.dbx-side-head{display:flex;flex-direction:column;gap:6px}',
+        '.dbx-search{width:100%}',
+        '.dbx-list{display:flex;flex-direction:column;gap:2px;overflow:auto;min-height:0;flex:1}',
+        '.dbx-item{display:flex;flex-direction:column;gap:2px;align-items:flex-start;text-align:left;padding:7px 8px;border-radius:8px;border:1px solid transparent;background:transparent;cursor:pointer;color:inherit;font:inherit;width:100%}',
+        '.dbx-item:hover{background:var(--dsw-alias-bg-layer-2,color-mix(in srgb,currentColor 6%,transparent))}',
+        '.dbx-item-active{background:var(--dsw-alias-bg-layer-2,color-mix(in srgb,currentColor 8%,transparent));border-color:var(--dsw-alias-border-l2,color-mix(in srgb,currentColor 18%,transparent))}',
+        '.dbx-item-top{display:flex;align-items:center;gap:6px;width:100%}',
+        '.dbx-item-id{font-weight:600;font-family:var(--dsw-font-markdown-code-block,ui-monospace,monospace);font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}',
+        '.dbx-item-sub{font-size:11px;color:var(--dsw-alias-label-tertiary,color-mix(in srgb,currentColor 55%,transparent));overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:100%}',
+        '.dbx-tag{border:1px solid var(--dsw-alias-border-l3,color-mix(in srgb,currentColor 22%,transparent));border-radius:999px;padding:0 6px;font-size:10px;line-height:16px;color:var(--dsw-alias-label-tertiary,color-mix(in srgb,currentColor 55%,transparent));white-space:nowrap}',
+        '.dbx-tag-write{color:var(--dsw-alias-state-success-primary,#2ea043);border-color:currentColor}',
+        '.dbx-foot{font-size:11px;color:var(--dsw-alias-label-tertiary,color-mix(in srgb,currentColor 55%,transparent));word-break:break-all;line-height:1.5}',
+        '.dbx-main-head{display:flex;align-items:center;gap:8px;padding:10px 14px;border-bottom:1px solid var(--dsw-alias-border-l2,color-mix(in srgb,currentColor 14%,transparent));flex-wrap:wrap}',
+        '.dbx-main-body{padding:14px;overflow:auto;flex:1;min-height:0}',
+        '.dbx-title{font-weight:600;font-size:14px;margin:0}',
+        '.dbx-muted{color:var(--dsw-alias-label-tertiary,color-mix(in srgb,currentColor 55%,transparent));font-size:12px;line-height:1.5}',
+        '.dbx-intro{font-size:14px;font-weight:600;margin:0 0 6px}',
+        '.dbx-warn{border:1px solid var(--dsw-alias-state-warn-primary,#d4a72c);border-radius:8px;padding:8px 10px;font-size:12px;margin:0 0 12px}',
+        '.dbx-err{border:1px solid var(--dsw-alias-state-error-primary,#d1242f);border-radius:8px;padding:8px 10px;font-size:12px;white-space:pre-wrap;margin:8px 0;color:var(--dsw-alias-state-error-primary,#d1242f)}',
+        '.dbx-ok{color:var(--dsw-alias-state-success-primary,#2ea043);font-size:12px}',
+        '.dbx-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px 12px;max-width:860px}',
+        '.dbx-field{display:flex;flex-direction:column;gap:4px;min-width:0}',
+        '.dbx-wide{grid-column:1/-1}',
+        '.dbx-label{font-size:12px;color:var(--dsw-alias-label-secondary,color-mix(in srgb,currentColor 75%,transparent))}',
+        '.dbx-actions{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-top:14px}',
+        '.dbx-select{height:30px;border-radius:6px;border:1px solid var(--dsw-alias-border-l2,color-mix(in srgb,currentColor 18%,transparent));background:var(--dsw-alias-bg-layer-1,transparent);color:inherit;font:inherit;padding:0 8px;min-width:140px}',
+        '.dbx-sql{width:100%;min-height:150px;resize:vertical;border-radius:8px;border:1px solid var(--dsw-alias-border-l2,color-mix(in srgb,currentColor 18%,transparent));background:var(--dsw-alias-bg-layer-1,transparent);color:inherit;padding:10px;font-family:var(--dsw-font-markdown-code-block,ui-monospace,SFMono-Regular,Menlo,monospace);font-size:12px;line-height:1.55;box-sizing:border-box}',
+        '.dbx-status{font-size:12px;color:var(--dsw-alias-label-tertiary,color-mix(in srgb,currentColor 55%,transparent))}',
+        '.dbx-table-wrap{overflow:auto;border:1px solid var(--dsw-alias-border-l2,color-mix(in srgb,currentColor 14%,transparent));border-radius:8px;margin-top:10px;max-height:52vh}',
+        '.dbx-table{border-collapse:collapse;width:100%;font-size:12px}',
+        '.dbx-table th,.dbx-table td{border-bottom:1px solid var(--dsw-alias-border-l1,color-mix(in srgb,currentColor 10%,transparent));padding:4px 8px;text-align:left;vertical-align:top;white-space:pre;max-width:420px;overflow:hidden;text-overflow:ellipsis}',
+        '.dbx-table th{position:sticky;top:0;background:var(--dsw-alias-bg-layer-2,#fafafa);font-weight:600;z-index:1}',
+        '.dbx-null{color:var(--dsw-alias-label-tertiary,color-mix(in srgb,currentColor 45%,transparent));font-style:italic}',
+        '.dbx-details{margin-top:12px;font-size:12px}',
+        '.dbx-details summary{cursor:pointer;color:var(--dsw-alias-label-secondary,color-mix(in srgb,currentColor 75%,transparent))}',
+        '.dbx-console{display:flex;flex-direction:column;height:100%;min-height:0}',
+        '.dbx-console-body{padding:12px 14px;display:flex;flex-direction:column;gap:8px;flex:1;min-height:0;overflow:auto}',
       ].join('\n')
       document.head.appendChild(style)
     }
 
-    /** 一个源 → 编辑草稿。 */
-    function draftOf(item) {
+    function engineLabelOf(engines, kind) {
+      const found = (engines || []).find((item) => item.kind === kind)
+      return found ? found.label : kind
+    }
+
+    function defaultPortOf(engines, kind) {
+      const found = (engines || []).find((item) => item.kind === kind)
+      return found ? found.defaultPort : 1433
+    }
+
+    function draftOf(item, engines) {
+      const engine = item ? item.engine : 'sqlserver'
       return {
         originalId: item ? item.id : '',
         id: item ? item.id : '',
+        engine: engine,
         description: item ? item.description : '',
-        dsn: item ? item.dsnEdit || item.dsn : '',
+        host: item ? item.host : '',
+        port: item ? item.port : defaultPortOf(engines, engine),
+        database: item ? item.database : '',
+        user: item ? item.user : '',
+        password: '',
+        hasPassword: item ? item.hasPassword : false,
+        ssl: item ? item.ssl : false,
         writable: item ? item.writable : false,
         allowDdl: item ? item.allowDdl : false,
+        dsn: '',
       }
     }
 
-    /** 排序：by 为空表示保持清单文件顺序，其余按 id / 描述。 */
-    function sortSources(list, by, dir) {
-      if (!by) return list
-      const factor = dir === 'desc' ? -1 : 1
-      return [...list].sort((a, b) => {
-        const left = by === 'id' ? a.id : a.description || ''
-        const right = by === 'id' ? b.id : b.description || ''
-        return left.localeCompare(right, 'zh', { numeric: true, sensitivity: 'base' }) * factor
-      })
+    function Field(props) {
+      return h(
+        'label',
+        { className: props.wide ? 'dbx-field dbx-wide' : 'dbx-field' },
+        h('span', { className: 'dbx-label' }, props.label),
+        props.children,
+        props.hint ? h('span', { className: 'dbx-muted' }, props.hint) : null,
+      )
     }
 
-    /** 编辑器：新增时挂在工具条下方，编辑时顶替被点的那一行——位置跟着点击走。 */
-    function Editor(props) {
-      const t = props.t
-      const draft = props.draft
-      const busy = props.busy
-      const setDraft = props.setDraft
-      const field = (label, hint, control, wide) =>
-        h(
-          'label',
-          { className: wide ? 'msx-field msx-wide' : 'msx-field' },
-          h('span', { className: 'msx-label' }, label),
-          control,
-          hint ? h('span', { className: 'msx-hint' }, hint) : null,
+    function ResultTable(props) {
+      const result = props.result
+      if (!result) return null
+      if (!result.columns || result.columns.length === 0) {
+        return h(
+          'div',
+          { className: 'dbx-muted' },
+          props.t('wrote') + ' · ' + props.t('affected') + ': ' + String(result.rowsAffected == null ? 0 : result.rowsAffected),
         )
+      }
       return h(
         'div',
-        { className: 'msx-card' },
-        h('div', { className: 'msx-card-title' }, draft.originalId ? t('editTitle') : t('newTitle')),
+        { className: 'dbx-table-wrap' },
+        h(
+          'table',
+          { className: 'dbx-table' },
+          h('thead', null, h('tr', null, result.columns.map((col) => h('th', { key: col }, col)))),
+          h(
+            'tbody',
+            null,
+            result.rows.map((row, rowIndex) =>
+              h(
+                'tr',
+                { key: rowIndex },
+                row.map((value, colIndex) => {
+                  if (value === null || value === undefined) {
+                    return h('td', { key: colIndex }, h('span', { className: 'dbx-null' }, 'NULL'))
+                  }
+                  const text = typeof value === 'string' ? value : JSON.stringify(value)
+                  return h('td', { key: colIndex, title: text }, text)
+                }),
+              ),
+            ),
+          ),
+        ),
+      )
+    }
+
+    function ConnectionForm(props) {
+      const t = props.t
+      const draft = props.draft
+      const setDraft = props.setDraft
+      const busy = props.busy
+      const engines = props.engines
+      const note = props.note
+      const showDsn = props.showDsn
+      const setShowDsn = props.setShowDsn
+      const patch = (next) => setDraft((prev) => Object.assign({}, prev, next))
+      const changeEngine = (nextEngine) => {
+        const oldDefault = defaultPortOf(engines, draft.engine)
+        const nextDefault = defaultPortOf(engines, nextEngine)
+        patch({ engine: nextEngine, port: draft.port === oldDefault || !draft.port ? nextDefault : draft.port })
+      }
+      return h(
+        'div',
+        { className: 'dbx-main-body' },
+        h('h3', { className: 'dbx-title' }, draft.originalId ? t('editTitle') : t('newTitle')),
         h(
           'div',
-          { className: 'msx-grid' },
-          field(
-            t('idLabel'),
-            t('idHint'),
+          { className: 'dbx-grid', style: { marginTop: '12px' } },
+          h(
+            Field,
+            { label: t('engine') },
+            h(
+              'select',
+              {
+                className: 'dbx-select',
+                value: draft.engine,
+                disabled: busy !== '',
+                onChange: (event) => changeEngine(event.target.value),
+              },
+              (engines || []).map((item) => h('option', { key: item.kind, value: item.kind }, item.label)),
+            ),
+          ),
+          h(
+            Field,
+            { label: t('idLabel'), hint: t('idHint') },
             h(Input, {
               value: draft.id,
               disabled: busy !== '',
               placeholder: 'prod_WMS',
-              onChange: (event) => setDraft((prev) => ({ ...prev, id: event.target.value })),
+              onChange: (event) => patch({ id: event.target.value }),
             }),
           ),
-          field(
-            t('descLabel'),
-            t('descHint'),
+          h(
+            Field,
+            { label: t('descLabel'), wide: true },
             h(Input, {
               value: draft.description,
               disabled: busy !== '',
-              onChange: (event) => setDraft((prev) => ({ ...prev, description: event.target.value })),
+              placeholder: '【示例·只读】10.0.0.9/DemoERP',
+              onChange: (event) => patch({ description: event.target.value }),
             }),
           ),
-          field(
-            t('dsnLabel'),
-            t('dsnHint'),
+          h(
+            Field,
+            { label: t('host') },
             h(Input, {
-              value: draft.dsn,
-              disabled: busy !== '',
-              placeholder: 'sqlserver://user:password@host:1433/database',
-              onChange: (event) => setDraft((prev) => ({ ...prev, dsn: event.target.value })),
+              value: draft.host,
+              disabled: busy !== '' || showDsn,
+              placeholder: '10.0.0.9',
+              onChange: (event) => patch({ host: event.target.value }),
             }),
-            true,
           ),
-          field(
-            t('writableLabel'),
-            t('writableHint'),
+          h(
+            Field,
+            { label: t('port') },
+            h(Input, {
+              value: String(draft.port || ''),
+              disabled: busy !== '' || showDsn,
+              placeholder: '1433',
+              onChange: (event) => patch({ port: event.target.value.replace(/[^0-9]/g, '') }),
+            }),
+          ),
+          h(
+            Field,
+            { label: t('database') },
+            h(Input, {
+              value: draft.database,
+              disabled: busy !== '' || showDsn,
+              placeholder: 'DemoERP',
+              onChange: (event) => patch({ database: event.target.value }),
+            }),
+          ),
+          h(
+            Field,
+            { label: t('user') },
+            h(Input, {
+              value: draft.user,
+              disabled: busy !== '' || showDsn,
+              placeholder: 'readonly',
+              onChange: (event) => patch({ user: event.target.value }),
+            }),
+          ),
+          h(
+            Field,
+            { label: t('password'), hint: t('passwordHint'), wide: true },
+            h(Input, {
+              value: draft.password,
+              type: 'password',
+              disabled: busy !== '' || showDsn,
+              placeholder: draft.hasPassword ? '******' : '',
+              onChange: (event) => patch({ password: event.target.value }),
+            }),
+          ),
+          h(
+            Field,
+            { label: t('ssl') },
+            h(Switch, {
+              checked: draft.ssl,
+              disabled: busy !== '' || showDsn,
+              label: t('ssl'),
+              onChange: (next) => patch({ ssl: next }),
+            }),
+          ),
+          h(
+            Field,
+            { label: t('writable'), hint: t('writableHint') },
             h(Switch, {
               checked: draft.writable,
               disabled: busy !== '',
-              label: t('writableLabel'),
-              onChange: (next) => setDraft((prev) => ({ ...prev, writable: next })),
+              label: t('writable'),
+              onChange: (next) => patch({ writable: next }),
             }),
           ),
-          field(
-            t('ddlLabel'),
-            t('ddlHint'),
+          h(
+            Field,
+            { label: t('allowDdl'), hint: t('ddlHint') },
             h(Switch, {
               checked: draft.allowDdl,
               disabled: busy !== '',
-              label: t('ddlLabel'),
-              onChange: (next) => setDraft((prev) => ({ ...prev, allowDdl: next })),
+              label: t('allowDdl'),
+              onChange: (next) => patch({ allowDdl: next }),
             }),
           ),
         ),
         h(
+          'details',
+          { className: 'dbx-details', open: showDsn },
+          h('summary', { onClick: () => setShowDsn(!showDsn) }, t('advanced')),
+          showDsn
+            ? h(
+                'div',
+                { className: 'dbx-field dbx-wide', style: { marginTop: '8px' } },
+                h(Input, {
+                  value: draft.dsn,
+                  disabled: busy !== '',
+                  placeholder: 'sqlserver://user:password@host:1433/database',
+                  onChange: (event) => patch({ dsn: event.target.value }),
+                }),
+                h('span', { className: 'dbx-muted' }, t('dsnHint')),
+              )
+            : null,
+        ),
+        h(
           'div',
-          { className: 'msx-actions' },
+          { className: 'dbx-actions' },
           h(
             Button,
             { size: 'sm', variant: 'primary', disabled: busy !== '', onClick: () => void props.onSave() },
@@ -283,26 +478,194 @@ window.__ModuleLoader__.load({
             { size: 'sm', variant: 'outline', disabled: busy !== '', onClick: () => void props.onTest() },
             busy === 'test' ? t('testing') : t('test'),
           ),
+          draft.originalId
+            ? h(
+                Button,
+                {
+                  size: 'sm',
+                  variant: 'ghost',
+                  disabled: busy !== '',
+                  onClick: () => void props.onRemove(draft.originalId),
+                },
+                t('remove'),
+              )
+            : null,
           h(
             Button,
             { size: 'sm', variant: 'ghost', disabled: busy !== '', onClick: () => props.onCancel() },
             t('cancel'),
           ),
+          note ? h('span', { className: note.kind === 'ok' ? 'dbx-ok' : 'dbx-err' }, note.text) : null,
         ),
       )
     }
 
-    function Section(props) {
+    function Console(props) {
+      const t = props.t
+      const source = props.source
+      const [sql, setSql] = React.useState('SELECT 1')
+      const [running, setRunning] = React.useState(false)
+      const [error, setError] = React.useState('')
+      const [result, setResult] = React.useState(null)
+      const run = async () => {
+        setRunning(true)
+        setError('')
+        try {
+          const value = await call('query/run', { source: source.id, sql: sql })
+          setResult(value)
+        } catch (cause) {
+          setResult(null)
+          setError(messageOf(cause))
+        } finally {
+          setRunning(false)
+        }
+      }
+      const onKeyDown = (event) => {
+        if ((event.ctrlKey || event.metaKey) && event.key === 'Enter') {
+          event.preventDefault()
+          void run()
+        }
+      }
+      return h(
+        'div',
+        { className: 'dbx-console' },
+        h(
+          'div',
+          { className: 'dbx-main-head' },
+          h('h3', { className: 'dbx-title' }, source.id),
+          h('span', { className: 'dbx-tag' }, source.engineLabel),
+          h('span', { className: 'dbx-tag' }, source.host + ':' + String(source.port)),
+          source.database ? h('span', { className: 'dbx-tag' }, source.database) : null,
+          source.writable ? h('span', { className: 'dbx-tag dbx-tag-write' }, t('writable')) : null,
+          h('span', { style: { flex: '1' } }),
+          h(
+            Button,
+            { size: 'sm', variant: 'ghost', disabled: running, onClick: () => props.onEdit(source) },
+            t('editTitle'),
+          ),
+          h(
+            Button,
+            { size: 'sm', variant: 'primary', disabled: running, onClick: () => void run() },
+            running ? t('running') : t('run'),
+          ),
+        ),
+        h(
+          'div',
+          { className: 'dbx-console-body' },
+          h('textarea', {
+            className: 'dbx-sql',
+            value: sql,
+            spellCheck: false,
+            onKeyDown: onKeyDown,
+            onChange: (event) => setSql(event.target.value),
+            placeholder: 'SELECT TOP 10 * FROM ...',
+          }),
+          h('span', { className: 'dbx-muted' }, t('sqlHint')),
+          error ? h('div', { className: 'dbx-err' }, error) : null,
+          result
+            ? h(
+                'div',
+                { className: 'dbx-status' },
+                (result.wrote
+                  ? t('wrote') + ' · ' + t('affected') + ': ' + String(result.rowsAffected || 0)
+                  : String(result.rowCount) + ' ' + t('rows')) +
+                  ' · ' +
+                  t('elapsed') +
+                  ' ' +
+                  String(result.elapsedMs) +
+                  ' ms' +
+                  (result.truncated ? ' · ' + t('truncated') : ''),
+              )
+            : null,
+          h(ResultTable, { result: result, t: t }),
+        ),
+      )
+    }
+
+    function ConsoleSettings(props) {
+      const t = props.t
+      const config = props.config
+      const [draft, setDraft] = React.useState(config ? Object.assign({}, config) : { writeMode: 'source', limit: 100 })
+      const [busy, setBusy] = React.useState('')
+      const [note, setNote] = React.useState('')
+      React.useEffect(() => {
+        if (config) setDraft(Object.assign({}, config))
+      }, [config])
+      const save = async () => {
+        setBusy('save')
+        setNote('')
+        try {
+          const next = await call('console/save', {
+            config: { writeMode: draft.writeMode, limit: Number(draft.limit) || 100 },
+          })
+          setDraft(Object.assign({}, next))
+          setNote(t('consoleSaved'))
+        } catch (cause) {
+          setNote(messageOf(cause))
+        } finally {
+          setBusy('')
+        }
+      }
+      return h(
+        'div',
+        { className: 'dbx-grid', style: { marginTop: '10px' } },
+        h(
+          Field,
+          { label: t('writeMode') },
+          h(
+            'select',
+            {
+              className: 'dbx-select',
+              value: draft.writeMode,
+              disabled: busy !== '',
+              onChange: (event) => setDraft(Object.assign({}, draft, { writeMode: event.target.value })),
+            },
+            h('option', { value: 'source' }, t('writeModeSource')),
+            h('option', { value: 'readonly' }, t('writeModeReadonly')),
+            h('option', { value: 'always' }, t('writeModeAlways')),
+          ),
+        ),
+        h(
+          Field,
+          { label: t('limit') },
+          h(Input, {
+            value: String(draft.limit || 100),
+            disabled: busy !== '',
+            onChange: (event) =>
+              setDraft(Object.assign({}, draft, { limit: event.target.value.replace(/[^0-9]/g, '') })),
+          }),
+        ),
+        h(
+          'div',
+          { className: 'dbx-actions dbx-wide' },
+          h(
+            Button,
+            { size: 'sm', variant: 'primary', disabled: busy !== '', onClick: () => void save() },
+            busy === 'save' ? t('consoleSaving') : t('save'),
+          ),
+          note ? h('span', { className: 'dbx-ok' }, note) : null,
+        ),
+      )
+    }
+
+    function Panel(props) {
       const t = props.t
       const [phase, setPhase] = React.useState('loading')
       const [error, setError] = React.useState('')
-      const [data, setData] = React.useState({ file: '', configDriven: false, sources: [] })
+      const [data, setData] = React.useState({
+        file: '',
+        configDriven: false,
+        sources: [],
+        engines: [],
+        consoleConfig: null,
+      })
+      const [selectedId, setSelectedId] = React.useState('')
+      const [editing, setEditing] = React.useState(false)
       const [draft, setDraft] = React.useState(null)
       const [busy, setBusy] = React.useState('')
       const [note, setNote] = React.useState(null)
-      const [pendingRemove, setPendingRemove] = React.useState('')
-      const [sortBy, setSortBy] = React.useState('')
-      const [sortDir, setSortDir] = React.useState('asc')
+      const [search, setSearch] = React.useState('')
+      const [showDsn, setShowDsn] = React.useState(false)
 
       const load = React.useCallback(async () => {
         setPhase('loading')
@@ -321,27 +684,92 @@ window.__ModuleLoader__.load({
         void load()
       }, [load])
 
-      const applyList = (value) => {
-        setData((prev) => ({ ...prev, file: value.file || prev.file, sources: value.sources }))
+      const sources = data.sources || []
+      const selected = sources.find((item) => item.id === selectedId) || null
+      const visible = search
+        ? sources.filter((item) =>
+            [item.id, item.host, item.database, item.description]
+              .join(' ')
+              .toLowerCase()
+              .includes(search.toLowerCase()),
+          )
+        : sources
+
+      const startNew = () => {
+        setEditing(true)
+        setSelectedId('')
+        setDraft(draftOf(null, data.engines))
+        setShowDsn(false)
+        setNote(null)
+      }
+      const startEdit = (item) => {
+        setSelectedId(item.id)
+        setEditing(true)
+        setDraft(draftOf(item, data.engines))
+        setShowDsn(false)
+        setNote(null)
+      }
+      const pickSource = (item) => {
+        setSelectedId(item.id)
+        setEditing(false)
+        setDraft(null)
+        setNote(null)
       }
 
       const save = async () => {
         setBusy('save')
         setNote(null)
         try {
-          const value = await call('sources/save', {
+          const payload = {
             originalId: draft.originalId,
             source: {
               id: draft.id,
+              engine: draft.engine,
               description: draft.description,
-              dsn: draft.dsn,
+              host: showDsn ? '' : draft.host,
+              port: showDsn ? '' : draft.port,
+              database: showDsn ? '' : draft.database,
+              user: showDsn ? '' : draft.user,
+              password: showDsn ? '' : draft.password,
+              ssl: draft.ssl,
               writable: draft.writable,
               allowDdl: draft.allowDdl,
+              dsn: showDsn ? draft.dsn : '',
             },
-          })
-          applyList(value)
+          }
+          const value = await call('sources/save', payload)
+          setData(Object.assign({}, data, { sources: value.sources }))
+          setSelectedId(draft.id)
+          setEditing(false)
           setDraft(null)
           setNote({ kind: 'ok', text: t('saved') })
+          setPhase('ready')
+        } catch (cause) {
+          setNote({ kind: 'err', text: messageOf(cause) })
+        } finally {
+          setBusy('')
+        }
+      }
+
+      const test = async () => {
+        setBusy('test')
+        setNote(null)
+        try {
+          const value = await call('sources/test', {
+            originalId: draft.originalId,
+            source: {
+              id: draft.id,
+              engine: draft.engine,
+              host: showDsn ? '' : draft.host,
+              port: showDsn ? '' : draft.port,
+              database: showDsn ? '' : draft.database,
+              user: showDsn ? '' : draft.user,
+              password: showDsn ? '' : draft.password,
+              ssl: draft.ssl,
+              dsn: showDsn ? draft.dsn : '',
+            },
+          })
+          setNote({ kind: 'ok', text: t('testOK') + ' · ' + value.version })
         } catch (cause) {
           setNote({ kind: 'err', text: messageOf(cause) })
         } finally {
@@ -350,12 +778,15 @@ window.__ModuleLoader__.load({
       }
 
       const remove = async (id) => {
+        if (!window.confirm(t('confirmRemove'))) return
         setBusy('remove')
         setNote(null)
         try {
-          const value = await call('sources/remove', { id })
-          applyList(value)
-          setPendingRemove('')
+          const value = await call('sources/remove', { id: id })
+          setData(Object.assign({}, data, { sources: value.sources }))
+          if (selectedId === id) setSelectedId('')
+          setEditing(false)
+          setDraft(null)
           setNote({ kind: 'ok', text: t('removed') })
         } catch (cause) {
           setNote({ kind: 'err', text: messageOf(cause) })
@@ -364,221 +795,183 @@ window.__ModuleLoader__.load({
         }
       }
 
-      const testRow = async (id) => {
-        setBusy('test:' + id)
-        setNote(null)
-        try {
-          const value = await call('sources/test', { id })
-          setNote({ kind: 'ok', text: id + ' · ' + t('testOK') + ' · ' + String(value.version).trim() })
-        } catch (cause) {
-          setNote({ kind: 'err', text: id + ' · ' + messageOf(cause) })
-        } finally {
-          setBusy('')
-        }
-      }
-
-      const testDraft = async () => {
-        setBusy('test')
-        setNote(null)
-        try {
-          const value = await call('sources/test', {
-            originalId: draft.originalId,
-            source: {
-              id: draft.id,
-              description: draft.description,
-              dsn: draft.dsn,
-              writable: draft.writable,
-              allowDdl: draft.allowDdl,
-            },
-          })
-          setNote({ kind: 'ok', text: t('testOK') + ' · ' + String(value.version).trim() })
-        } catch (cause) {
-          setNote({ kind: 'err', text: messageOf(cause) })
-        } finally {
-          setBusy('')
-        }
-      }
-
-      const row = (item) => {
-        if (draft && draft.originalId === item.id) {
-          return h(Editor, {
-            key: 'edit:' + item.id,
-            draft,
-            setDraft,
-            busy,
-            t,
-            onSave: save,
-            onTest: testDraft,
-            onCancel: () => setDraft(null),
-          })
-        }
+      if (phase === 'loading') {
         return h(
           'div',
-          { className: 'msx-row', key: 'row:' + item.id },
-          h(
-            'div',
-            { className: 'msx-rowhead' },
-            h('span', { className: 'msx-id' }, item.id),
-            item.description ? h('span', { className: 'msx-desc' }, item.description) : null,
-            h(
-              'span',
-              { className: item.writable ? 'msx-tag msx-tag-write' : 'msx-tag' },
-              item.writable ? t('writable') : t('readonly'),
-            ),
-            item.allowDdl ? h('span', { className: 'msx-tag' }, t('ddlTag')) : null,
-          ),
-          h('div', { className: 'msx-dsn' }, item.dsn),
-          h(
-            'div',
-            { className: 'msx-actions' },
-            h(
-              Button,
-              { size: 'sm', variant: 'outline', disabled: busy !== '', onClick: () => void testRow(item.id) },
-              busy === 'test:' + item.id ? t('testing') : t('test'),
-            ),
-            h(
-              Button,
-              { size: 'sm', variant: 'outline', disabled: busy !== '', onClick: () => setDraft(draftOf(item)) },
-              t('edit'),
-            ),
-            pendingRemove === item.id
-              ? h(
-                  React.Fragment,
-                  null,
-                  h(
-                    Button,
-                    { size: 'sm', variant: 'primary', disabled: busy !== '', onClick: () => void remove(item.id) },
-                    t('confirmRemove'),
-                  ),
-                  h(
-                    Button,
-                    { size: 'sm', variant: 'ghost', disabled: busy !== '', onClick: () => setPendingRemove('') },
-                    t('cancel'),
-                  ),
-                )
-              : h(
-                  Button,
-                  { size: 'sm', variant: 'ghost', disabled: busy !== '', onClick: () => setPendingRemove(item.id) },
-                  t('remove'),
-                ),
-          ),
+          { className: 'dbx-root', style: { padding: '16px' } },
+          h('span', { className: 'dbx-muted' }, 'Loading…'),
         )
       }
-
-      const sortButton = (fieldKey, label) =>
-        h(
-          Button,
-          {
-            size: 'sm',
-            variant: sortBy === fieldKey ? 'primary' : 'outline',
-            disabled: busy !== '',
-            title: t('sortHint'),
-            onClick: () => {
-              if (sortBy === fieldKey) setSortDir(sortDir === 'asc' ? 'desc' : 'asc')
-              else {
-                setSortBy(fieldKey)
-                setSortDir('asc')
-              }
-            },
-          },
-          label + (sortBy === fieldKey ? (sortDir === 'asc' ? ' \u2191' : ' \u2193') : ''),
-        )
-
-      const body = () => {
-        if (phase === 'loading') return h('div', { className: 'msx-hint' }, t('loading'))
-        if (phase === 'error') {
-          return h(
-            'div',
-            null,
-            h('div', { className: 'msx-note msx-err' }, error),
-            h(
-              'div',
-              { className: 'msx-actions' },
-              h(Button, { size: 'sm', variant: 'outline', onClick: () => void load() }, t('retry')),
-            ),
-          )
-        }
-        const sorted = sortSources(data.sources, sortBy, sortDir)
+      if (phase === 'error') {
         return h(
-          React.Fragment,
-          null,
-          data.configDriven ? h('div', { className: 'msx-warn' }, t('configDriven')) : null,
-          h(
-            'div',
-            { className: 'msx-bar' },
-            h(
-              Button,
-              { size: 'sm', variant: 'primary', disabled: busy !== '', onClick: () => setDraft(draftOf(null)) },
-              t('add'),
-            ),
-            h(Button, { size: 'sm', variant: 'ghost', disabled: busy !== '', onClick: () => void load() }, t('reload')),
-            h(
-              'div',
-              { className: 'msx-sort' },
-              h('span', { className: 'msx-label' }, t('sortLabel')),
-              sortButton('id', t('sortId')),
-              sortButton('description', t('sortDescription')),
-              h(
-                Button,
-                {
-                  size: 'sm',
-                  variant: sortBy === '' ? 'primary' : 'ghost',
-                  disabled: busy !== '',
-                  onClick: () => setSortBy(''),
-                },
-                t('sortDefault'),
-              ),
-            ),
-            note ? h('span', { className: note.kind === 'ok' ? 'msx-note msx-ok' : 'msx-note msx-err' }, note.text) : null,
-          ),
-          draft && !sorted.some((item) => item.id === draft.originalId)
-            ? h(Editor, {
-                key: 'new',
-                draft,
-                setDraft,
-                busy,
-                t,
-                onSave: save,
-                onTest: testDraft,
-                onCancel: () => setDraft(null),
-              })
-            : null,
-          data.sources.length === 0
-            ? h('div', { className: 'msx-empty' }, t('empty'))
-            : h('div', { className: 'msx-list' }, sorted.map(row)),
+          'div',
+          { className: 'dbx-root', style: { padding: '16px', flexDirection: 'column', gap: '10px' } },
+          h('div', { className: 'dbx-err' }, error),
+          h(Button, { size: 'sm', onClick: () => void load() }, t('reload')),
         )
       }
 
       return h(
         'div',
-        { className: 'msx-root' },
+        { className: 'dbx-root' },
         h(
-          'div',
-          null,
-          h('h2', { className: 'msx-title' }, t('title')),
-          h('p', { className: 'msx-hint' }, t('intro')),
-          data.file
-            ? h(
-                'p',
-                { className: 'msx-hint' },
-                t('file') + '：',
-                h('span', { className: 'msx-path' }, data.file),
-              )
-            : null,
+          'aside',
+          { className: 'dbx-side' },
+          h(
+            'div',
+            { className: 'dbx-side-head' },
+            h(Input, {
+              value: search,
+              className: 'dbx-search',
+              placeholder: t('search'),
+              onChange: (event) => setSearch(event.target.value),
+            }),
+            h(Button, { size: 'sm', variant: 'primary', onClick: startNew }, '+ ' + t('add')),
+          ),
+          data.configDriven ? h('div', { className: 'dbx-warn' }, t('configDriven')) : null,
+          visible.length === 0
+            ? h('div', { className: 'dbx-muted' }, t('empty'))
+            : h(
+                'div',
+                { className: 'dbx-list' },
+                visible.map((item) =>
+                  h(
+                    'button',
+                    {
+                      key: item.id,
+                      type: 'button',
+                      className: item.id === selectedId && !editing ? 'dbx-item dbx-item-active' : 'dbx-item',
+                      onClick: () => pickSource(item),
+                    },
+                    h(
+                      'span',
+                      { className: 'dbx-item-top' },
+                      h('span', { className: 'dbx-item-id' }, item.id),
+                      h('span', { className: 'dbx-tag' }, item.engineLabel),
+                      item.writable ? h('span', { className: 'dbx-tag dbx-tag-write' }, 'W') : null,
+                    ),
+                    h(
+                      'span',
+                      { className: 'dbx-item-sub' },
+                      item.host + ':' + String(item.port) + (item.database ? ' / ' + item.database : ''),
+                    ),
+                  ),
+                ),
+              ),
+          h('div', { className: 'dbx-foot' }, t('file') + ': ' + (data.fileDisplay || data.file)),
         ),
-        body(),
+        h(
+          'section',
+          { className: 'dbx-main' },
+          editing
+            ? h(ConnectionForm, {
+                t: t,
+                draft: draft,
+                setDraft: setDraft,
+                busy: busy,
+                engines: data.engines,
+                note: note,
+                showDsn: showDsn,
+                setShowDsn: setShowDsn,
+                onSave: save,
+                onTest: test,
+                onRemove: remove,
+                onCancel: () => {
+                  setEditing(false)
+                  setDraft(null)
+                  setNote(null)
+                },
+              })
+            : selected
+              ? h(
+                  'div',
+                  { style: { display: 'flex', flexDirection: 'column', height: '100%', minHeight: 0 } },
+                  h(Console, { t: t, source: selected, onEdit: startEdit }),
+                )
+              : h(
+                  'div',
+                  { className: 'dbx-main-body' },
+                  h('div', { className: 'dbx-intro' }, t('pick')),
+                  h('div', { className: 'dbx-muted' }, t('engineHint')),
+                  h(
+                    'div',
+                    { className: 'dbx-actions' },
+                    h(Button, { size: 'sm', variant: 'ghost', onClick: () => void load() }, t('reload')),
+                  ),
+                ),
+        ),
+      )
+    }
+
+    function View(props) {
+      const t = props.t
+      return h('div', { style: { height: '100%', minHeight: 0 } }, h(Panel, { t: t }))
+    }
+
+    function SettingsSection(props) {
+      const t = props.t
+      const [data, setData] = React.useState(null)
+      const [error, setError] = React.useState('')
+      React.useEffect(() => {
+        let alive = true
+        call('sources/list', {})
+          .then((value) => {
+            if (alive) setData(value)
+          })
+          .catch((cause) => {
+            if (alive) setError(messageOf(cause))
+          })
+        return () => {
+          alive = false
+        }
+      }, [])
+      return h(
+        'div',
+        { className: 'dbx-root', style: { flexDirection: 'column', padding: '16px', gap: '10px', height: 'auto' } },
+        h('h2', { className: 'dbx-title', style: { fontSize: '15px' } }, t('title')),
+        h('p', { className: 'dbx-muted' }, t('settingsIntro')),
+        error ? h('div', { className: 'dbx-err' }, error) : null,
+        data
+          ? h(
+              'div',
+              null,
+              h('h3', { className: 'dbx-title', style: { marginTop: '8px' } }, t('consoleTitle')),
+              h(ConsoleSettings, { t: t, config: data.consoleConfig }),
+              h('div', { className: 'dbx-foot', style: { marginTop: '12px' } }, t('file') + ': ' + (data.fileDisplay || data.file)),
+            )
+          : null,
       )
     }
 
     const inject = ['slots', 'locale']
-    const name = 'dsh-tool-mssql-client'
+    const name = 'dsh-tool-database-client'
 
     function apply(ctx) {
       ensureStyles()
       ctx.effect(
         () => ctx.locale.register(NS, { zh: zh, en: en }),
-        'dsh-tool-mssql: dictionaries',
+        'dsh-tool-database: dictionaries',
       )
+      const t = ctx.locale.bind(NS)
+
+      ctx.effect(
+        () =>
+          ctx.slots.inject('conversation.view', () =>
+            ctx.slots.register(
+              {
+                name: 'conversation.view',
+                id: VIEW_ID,
+                order: 20,
+                label: () => t('view'),
+                locale: NS,
+                children: {},
+              },
+              View,
+            ),
+          ),
+        'dsh-tool-database: session view',
+      )
+
       ctx.effect(
         () =>
           ctx.slots.inject('settings.section', () =>
@@ -587,13 +980,13 @@ window.__ModuleLoader__.load({
                 name: 'settings.section',
                 id: SECTION_ID,
                 order: 45,
-                label: () => ctx.locale.bind(NS)('nav'),
+                label: () => t('nav'),
                 locale: NS,
               },
-              Section,
+              SettingsSection,
             ),
           ),
-        'dsh-tool-mssql: settings section',
+        'dsh-tool-database: settings section',
       )
     }
 

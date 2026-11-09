@@ -1,18 +1,26 @@
 /**
- * 连接字符串互转 + 清单文件增删改的单测（不碰网络、不碰真实数据库）。
+ * 连接字符串互转 + 清单/控制台配置读写 + 迁移的单测（不碰网络、不碰真实数据库）。
  */
 
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
+import type { SourceConfig } from '../src/core.js'
 import { PASSWORD_SENTINEL, envNameOf, formatDsn, parseDsn } from '../src/dsn.js'
-import { readSourcesFile, removeSource, upsertSource, writeSourcesFile } from '../src/settings-store.js'
-import type { SourceConfig } from '../src/mssql-core.js'
+import {
+  migrateLegacySources,
+  readConsoleConfig,
+  readSourcesFile,
+  removeSource,
+  upsertSource,
+  writeConsoleConfig,
+  writeSourcesFile,
+} from '../src/settings-store.js'
 
 const dirs: string[] = []
 function scratch(): string {
-  const dir = mkdtempSync(join(tmpdir(), 'dsh-mssql-test-'))
+  const dir = mkdtempSync(join(tmpdir(), 'dsh-db-test-'))
   dirs.push(dir)
   return dir
 }
@@ -22,8 +30,9 @@ afterEach(() => {
 
 const SAMPLE: SourceConfig = {
   id: 'prod_WMS',
+  engine: 'sqlserver',
   description: '【正式·只读】',
-  server: '10.0.0.9',
+  host: '10.0.0.9',
   port: 1433,
   database: 'demo_erp',
   user: 'reader',
@@ -35,7 +44,8 @@ const SAMPLE: SourceConfig = {
 describe('parseDsn', () => {
   it('解析 sqlserver:// 形式并还原百分号编码', () => {
     expect(parseDsn('sqlserver://reader:p%40ss@10.0.0.9:1433/demo_erp')).toEqual({
-      server: '10.0.0.9',
+      engine: 'sqlserver',
+      host: '10.0.0.9',
       port: 1433,
       database: 'demo_erp',
       user: 'reader',
@@ -43,19 +53,21 @@ describe('parseDsn', () => {
     })
   })
 
-  it('省略端口取 1433，省略库名/账号也成立', () => {
-    expect(parseDsn('mssql://10.0.0.9/DemoBarCode')).toEqual({
-      server: '10.0.0.9',
+  it('省略端口取引擎默认端口，省略库名/账号也成立', () => {
+    expect(parseDsn('mssql://10.0.0.9/DemoBarCode')).toMatchObject({
+      engine: 'sqlserver',
+      host: '10.0.0.9',
       port: 1433,
       database: 'DemoBarCode',
-      user: undefined,
-      password: undefined,
     })
+    expect(parseDsn('postgres://u:p@pg:5432/app')).toMatchObject({ engine: 'postgres', port: 5432 })
+    expect(parseDsn('mysql://u:p@my/app')).toMatchObject({ engine: 'mysql', port: 3306 })
   })
 
   it('支持 ADO 风格 Server=host,port;Database=…;User Id=…;Password=…', () => {
     expect(parseDsn('Server=10.0.0.9,1533;Database=DemoBarCode_Test;User Id=reader2;Password=abc')).toEqual({
-      server: '10.0.0.9',
+      engine: 'sqlserver',
+      host: '10.0.0.9',
       port: 1533,
       database: 'DemoBarCode_Test',
       user: 'reader2',
@@ -65,7 +77,7 @@ describe('parseDsn', () => {
 
   it('拒绝空串、非法协议、非法端口', () => {
     expect(() => parseDsn('  ')).toThrow(/不能为空/)
-    expect(() => parseDsn('postgres://a@b/c')).toThrow(/不支持的协议/)
+    expect(() => parseDsn('oracle://a@b/c')).toThrow(/不支持的连接串前缀/)
     expect(() => parseDsn('sqlserver://h:99999/db')).toThrow(/无法解析|端口非法/)
   })
 })
@@ -80,17 +92,25 @@ describe('formatDsn', () => {
   it('非 mask 时明文可被 parseDsn 读回（密码含特殊字符也成立）', () => {
     const plain = formatDsn(SAMPLE)
     expect(parseDsn(plain).password).toBe('p@ss word')
+    expect(parseDsn(plain).engine).toBe('sqlserver')
   })
 
-  it('passwordEnv 回显为 \${ENV} 占位而不是编码后的乱码', () => {
-    const viaEnv: SourceConfig = { id: 'x', server: 'h', user: 'u', passwordEnv: 'MSSQL_PW' }
+  it('各引擎输出对应 scheme', () => {
+    const pg: SourceConfig = { id: 'pg', engine: 'postgres', host: 'h', user: 'u', database: 'd' }
+    expect(formatDsn(pg)).toBe('postgres://u@h:5432/d')
+    const my: SourceConfig = { id: 'my', engine: 'mysql', host: 'h', user: 'u', database: 'd' }
+    expect(formatDsn(my)).toBe('mysql://u@h:3306/d')
+  })
+
+  it('passwordEnv 回显为 ${ENV} 占位而不是编码后的乱码', () => {
+    const viaEnv: SourceConfig = { id: 'x', host: 'h', user: 'u', passwordEnv: 'MSSQL_PW' }
     const text = formatDsn(viaEnv, { mask: true })
-    expect(text).toBe('sqlserver://u:\${MSSQL_PW}@h:1433')
+    expect(text).toBe('sqlserver://u:${MSSQL_PW}@h:1433')
     expect(envNameOf(parseDsn(text).password)).toBe('MSSQL_PW')
   })
 
   it('没有账号时不输出 @', () => {
-    expect(formatDsn({ id: 'x', server: 'h', database: 'd' })).toBe('sqlserver://h:1433/d')
+    expect(formatDsn({ id: 'x', host: 'h', database: 'd' })).toBe('sqlserver://h:1433/d')
   })
 })
 
@@ -107,8 +127,9 @@ describe('settings-store', () => {
     expect(text).not.toContain('undefined')
     expect(Object.keys(JSON.parse(text)[0])).toEqual([
       'id',
+      'engine',
       'description',
-      'server',
+      'host',
       'port',
       'database',
       'user',
@@ -116,25 +137,23 @@ describe('settings-store', () => {
       'writable',
     ])
     const back = readSourcesFile(file)[0] as SourceConfig
-    expect(back).toMatchObject(SAMPLE)
+    expect(back).toMatchObject({ ...SAMPLE, server: SAMPLE.host })
     expect(back.port).toBe(1433)
     expect(back.writable).toBe(false)
   })
 
   it('upsert 追加 / 改名 / 撞 id 报错', () => {
-    const list: SourceConfig[] = [{ id: 'a', server: 'h1' }]
-    const added = upsertSource(list, { id: 'b', server: 'h2' })
+    const list: SourceConfig[] = [{ id: 'a', host: 'h1' }]
+    const added = upsertSource(list, { id: 'b', host: 'h2' })
     expect(added.map((item) => item.id)).toEqual(['a', 'b'])
-    const renamed = upsertSource(added, { id: 'c', server: 'h2' }, 'b')
+    const renamed = upsertSource(added, { id: 'c', host: 'h2' }, 'b')
     expect(renamed.map((item) => item.id)).toEqual(['a', 'c'])
-    // 改名到已被占用的 id：index 找不到 originalId，clash 命中 → 拒绝
-    expect(() => upsertSource(renamed, { id: 'a', server: 'h3' }, 'zzz')).toThrow(/已存在/)
-    // 不带 originalId 时是「按 id 更新」，允许覆盖自身
-    expect(upsertSource(renamed, { id: 'a', server: 'h3' })[0]).toEqual({ id: 'a', server: 'h3' })
+    expect(() => upsertSource(renamed, { id: 'a', host: 'h3' }, 'zzz')).toThrow(/已存在/)
+    expect(upsertSource(renamed, { id: 'a', host: 'h3' })[0]).toEqual({ id: 'a', host: 'h3' })
   })
 
   it('remove 删除，删不存在的 id 报错', () => {
-    const list: SourceConfig[] = [{ id: 'a', server: 'h1' }, { id: 'b', server: 'h2' }]
+    const list: SourceConfig[] = [{ id: 'a', host: 'h1' }, { id: 'b', host: 'h2' }]
     expect(removeSource(list, 'a').map((item) => item.id)).toEqual(['b'])
     expect(() => removeSource(list, 'zzz')).toThrow(/不存在/)
   })
@@ -143,5 +162,27 @@ describe('settings-store', () => {
     const file = join(scratch(), 'bad.json')
     writeFileSync(file, '{ oops', 'utf8')
     expect(() => readSourcesFile(file)).toThrow(/不是合法 JSON/)
+  })
+
+  it('控制台配置默认值与读写', () => {
+    const dir = scratch()
+    const file = join(dir, 'config.json')
+    expect(readConsoleConfig(file)).toEqual({ writeMode: 'source', limit: 100 })
+    writeConsoleConfig({ writeMode: 'readonly', limit: 50 }, file)
+    expect(readConsoleConfig(file)).toEqual({ writeMode: 'readonly', limit: 50 })
+    expect(JSON.parse(readFileSync(file, 'utf8'))).toEqual({ writeMode: 'readonly', limit: 50 })
+    writeFileSync(file, '{ bad', 'utf8')
+    expect(readConsoleConfig(file)).toEqual({ writeMode: 'source', limit: 100 })
+  })
+
+  it('老清单迁移只复制一次', () => {
+    const dir = scratch()
+    const legacy = join(dir, 'old', 'sources.json')
+    const target = join(dir, 'new', 'sources.json')
+    writeFileSync(join(dir, 'marker'), '', 'utf8')
+    writeSourcesFile(legacy, [SAMPLE])
+    expect(migrateLegacySources(legacy, target)).toBe(true)
+    expect(readSourcesFile(target)[0]).toMatchObject({ id: 'prod_WMS', host: '10.0.0.9' })
+    expect(migrateLegacySources(legacy, target)).toBe(false)
   })
 })

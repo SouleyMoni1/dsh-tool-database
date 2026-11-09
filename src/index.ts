@@ -1,16 +1,16 @@
 /**
- * dsh-tool-mssql 插件入口。
+ * dsh-tool-database 插件入口。
  *
- * 注册 6 个 mssql_* 工具，让模型直接读（可选写）SQL Server：
- *   mssql_sources / mssql_databases / mssql_tables / mssql_schema / mssql_query / mssql_execute
+ * 注册 6 个 db_* 工具，一个清单同时管 SQL Server / PostgreSQL / MySQL：
+ *   db_sources / db_databases / db_tables / db_schema / db_query / db_execute
  *
  * 数据源配置（config.sources 优先，否则读文件——改文件即时生效，按 mtime 热加载）：
  *   1. 插件 config.sources：cordis.patch.yml 里的数组；
- *   2. $DSH_HOME/mssql-tool/sources.json。
+ *   2. $DSH_HOME/database-tool/sources.json（首次启动自动从老插件 mssql-tool/sources.json 迁移一份）。
  *
- * 图形化维护：浏览器侧设置页「SQL Server 数据源」经 connection.fetch 打 RPC，
- * 宿主侧增删改同一个 sources.json（见 settings-rpc.ts）；没有 connection 的部署
- * （例如 headless）自动跳过设置页，工具不受影响。
+ * 图形化维护：会话顶部「数据库」标签页与设置页都经 connection.fetch 打 RPC，
+ * 宿主侧增删改同一份 sources.json（见 settings-rpc.ts）；没有 connection 的部署
+ * 自动跳过界面，工具不受影响。
  *
  * 凭据边界：密码只经 passwordEnv（推荐）或宿主侧文件进入进程，任何工具返回值都不含密码。
  */
@@ -19,43 +19,41 @@ import { readFileSync, statSync } from 'node:fs'
 import type { Context } from '@deepseek-ai/cordis'
 import { defineTool } from '@deepseek-ai/dsh-tools'
 import {
-  assertReadonlySql,
-  assertWriteSql,
   clampLimit,
   defaultSourcesPath,
   describeSource,
   formatColumnType,
+  legacySourcesPath,
   parseSources,
-  resolvePassword,
   type SourceConfig,
-} from './mssql-core.js'
-import {
-  closeAllPools,
-  listDatabases,
-  listTables,
-  probe,
-  runExecute,
-  runQuery,
-  tableColumns,
-} from './pool.js'
+} from './core.js'
+import { assertReadonlySql, assertWriteSql } from './sql-guard.js'
+import { closeAllPools, listDatabases, listTables, probe, runExecute, runQuery, tableColumns } from './pool.js'
+import { migrateLegacySources } from './settings-store.js'
 import { applySettingsRpc } from './settings-rpc.js'
 
-export const name = 'dsh-tool-mssql'
+export const name = 'dsh-tool-database'
 export const inject = ['tools']
 
 export interface Config {
   /** 直接在该字段写源数组；非空时忽略配置文件。 */
   sources?: SourceConfig[]
-  /** 源清单配置文件路径，默认 $DSH_HOME/mssql-tool/sources.json。 */
+  /** 源清单配置文件路径，默认 $DSH_HOME/database-tool/sources.json。 */
   configFile?: string
   /** 工具未显式传 source 时使用的默认源 id；缺省取清单第一条。 */
   defaultSource?: string
 }
 
 const TOOL_TIMEOUT_MS = 30_000
+const ENGINE_HINT =
+  'engines: sqlserver (mssql) / postgres (pg) / mysql (mysql2). ' +
+  'Parameters: SQL Server uses @p0, @p1 …; PostgreSQL uses $1, $2 …; MySQL uses ?.'
 
 export function apply(ctx: Context, config: Config = {}): void {
   const filePath = config.configFile ?? defaultSourcesPath()
+  if (!config.configFile) {
+    migrateLegacySources(legacySourcesPath(), filePath)
+  }
   let fromFile: { mtimeMs: number; sources: SourceConfig[] } | null = null
   let fromConfig: SourceConfig[] | null = null
 
@@ -81,31 +79,31 @@ export function apply(ctx: Context, config: Config = {}): void {
     const all = listSources()
     if (all.length === 0) {
       throw new Error(
-        `未配置任何数据源：请在 ${filePath} 写 JSON 数组，或配置插件 config.sources`,
+        '未配置任何数据源：请在 ' + filePath + ' 写 JSON 数组，或配置插件 config.sources',
       )
     }
     const wanted = id ?? config.defaultSource ?? (all[0] as SourceConfig).id
     const found = all.find((s) => s.id === wanted)
     if (!found) {
-      throw new Error(`未知数据源 ${wanted}；可用: ${all.map((s) => s.id).join(', ')}`)
+      throw new Error('未知数据源 ' + wanted + '；可用: ' + all.map((s) => s.id).join(', '))
     }
     return found
   }
 
   const fail = (error: unknown): string =>
-    `mssql 错误: ${error instanceof Error ? error.message : String(error)}`
+    'db 错误: ' + (error instanceof Error ? error.message : String(error))
 
   ctx.tools.register(
     defineTool({
-      name: 'mssql_sources',
+      name: 'db_sources',
       description:
-        'List configured SQL Server data sources (id / host / port / database / user / readonly). ' +
-        'Never returns passwords. Call this first to learn the "source" id used by other mssql_* tools. ' +
-        'Pass probe: true to also test connectivity and print the server version.',
+        'List configured database sources (id / engine / host / port / database / user / readonly). ' +
+        'Never returns passwords. Call this first to learn the "source" id used by other db_* tools. ' +
+        'Pass probe: true to also test connectivity and print the server version. ' + ENGINE_HINT,
       parameters: {
         probe: {
           type: 'boolean',
-          description: 'Test each source with a real connection (SELECT @@VERSION). Default false.',
+          description: 'Test each source with a real connection. Default false.',
         },
       },
       output: {
@@ -116,26 +114,17 @@ export function apply(ctx: Context, config: Config = {}): void {
         try {
           const all = listSources()
           if (all.length === 0) {
-            return `mssql: 未配置数据源。请在 ${filePath} 写 JSON 数组，或配置插件 config.sources`
+            return 'db: 未配置数据源。请在 ' + filePath + ' 写 JSON 数组，或配置插件 config.sources'
           }
           if (args.probe !== true) return JSON.stringify(all.map(describeSource), null, 2)
           const probed = []
           for (const source of all) {
             const view = describeSource(source)
             try {
-              const info = await probe(source, resolvePassword(source))
-              probed.push({
-                ...view,
-                reachable: true,
-                version: info.version,
-                currentDatabase: info.database,
-              })
+              const info = await probe(source)
+              probed.push({ ...view, reachable: true, version: info.version, currentDatabase: info.database })
             } catch (error) {
-              probed.push({
-                ...view,
-                reachable: false,
-                error: error instanceof Error ? error.message : String(error),
-              })
+              probed.push({ ...view, reachable: false, error: error instanceof Error ? error.message : String(error) })
             }
           }
           return JSON.stringify(probed, null, 2)
@@ -149,12 +138,12 @@ export function apply(ctx: Context, config: Config = {}): void {
 
   ctx.tools.register(
     defineTool({
-      name: 'mssql_databases',
+      name: 'db_databases',
       description:
-        'List databases on one SQL Server source (read-only, uses sys.databases). ' +
-        'Omit source to use the default one.',
+        'List databases on one source (read-only). SQL Server uses sys.databases, PostgreSQL pg_database, ' +
+        'MySQL SHOW DATABASES. Omit source to use the default one.',
       parameters: {
-        source: { type: 'string', description: 'Source id from mssql_sources; optional.' },
+        source: { type: 'string', description: 'Source id from db_sources; optional.' },
       },
       output: {
         schema: { type: 'string' },
@@ -163,7 +152,7 @@ export function apply(ctx: Context, config: Config = {}): void {
       execute: async (args) => {
         try {
           const source = pick(args.source)
-          const names = await listDatabases(source, resolvePassword(source))
+          const names = await listDatabases(source)
           return JSON.stringify({ source: source.id, databases: names })
         } catch (error) {
           return fail(error)
@@ -175,13 +164,13 @@ export function apply(ctx: Context, config: Config = {}): void {
 
   ctx.tools.register(
     defineTool({
-      name: 'mssql_tables',
+      name: 'db_tables',
       description:
-        'List tables and views of one source with schema, object kind and row count estimate ' +
-        '(read-only). Filter by schema or name substring before writing SQL — much cheaper than SELECT *.',
+        'List tables and views of one source with schema, object kind and row count estimate (read-only). ' +
+        'Filter by schema or name substring before writing SQL — much cheaper than SELECT *. ' + ENGINE_HINT,
       parameters: {
-        source: { type: 'string', description: 'Source id from mssql_sources; optional.' },
-        schema: { type: 'string', description: 'Restrict to one schema, e.g. dbo.' },
+        source: { type: 'string', description: 'Source id from db_sources; optional.' },
+        schema: { type: 'string', description: 'Restrict to one schema, e.g. dbo / public / a database name.' },
         filter: { type: 'string', description: 'Case-insensitive substring match on the table name.' },
         limit: { type: 'integer', description: 'Max rows to return (default 100, hard cap 500).' },
       },
@@ -192,7 +181,7 @@ export function apply(ctx: Context, config: Config = {}): void {
       execute: async (args) => {
         try {
           const source = pick(args.source)
-          const rows = await listTables(source, resolvePassword(source), {
+          const rows = await listTables(source, {
             schema: args.schema,
             filter: args.filter,
             limit: clampLimit(args.limit),
@@ -208,13 +197,12 @@ export function apply(ctx: Context, config: Config = {}): void {
 
   ctx.tools.register(
     defineTool({
-      name: 'mssql_schema',
+      name: 'db_schema',
       description:
-        'Show column definitions of one table (read-only): name, type with length/precision, ' +
-        'nullable, identity, primary key and default expression. ' +
-        'Accepts "table" or "schema.table".',
+        'Show column definitions of one table (read-only): name, type with length/precision, nullable, ' +
+        'identity/auto-increment, primary key and default expression. Accepts "table" or "schema.table".',
       parameters: {
-        source: { type: 'string', description: 'Source id from mssql_sources; optional.' },
+        source: { type: 'string', description: 'Source id from db_sources; optional.' },
         table: { type: 'string', required: true, description: 'Table name, e.g. users or dbo.users.' },
       },
       output: {
@@ -224,18 +212,18 @@ export function apply(ctx: Context, config: Config = {}): void {
       execute: async (args) => {
         try {
           const source = pick(args.source)
-          const columns = await tableColumns(source, resolvePassword(source), args.table)
+          const columns = await tableColumns(source, args.table)
           if (columns.length === 0) {
-            return `mssql: 表 ${args.table} 不存在或当前账号无元数据权限`
+            return 'db: 表 ' + args.table + ' 不存在或当前账号无元数据权限'
           }
           const lines = columns.map((c) =>
             [
               c.column,
-              formatColumnType(c),
+              formatColumnType({ ...c, engine: source.engine }),
               c.nullable ? 'NULL' : 'NOT NULL',
               c.identity ? 'IDENTITY' : '',
               c.primaryKey ? 'PK' : '',
-              c.default ? `DEFAULT ${c.default}` : '',
+              c.default ? 'DEFAULT ' + c.default : '',
             ]
               .filter(Boolean)
               .join(' '),
@@ -251,22 +239,21 @@ export function apply(ctx: Context, config: Config = {}): void {
 
   ctx.tools.register(
     defineTool({
-      name: 'mssql_query',
+      name: 'db_query',
       description:
         'Run ONE read-only statement against a source (SELECT / WITH / VALUES). Writes are rejected. ' +
-        'Use @p0, @p1 placeholders and pass params: [v0, v1] — never interpolate values into SQL. ' +
-        'Results come back as { columns, rows, truncated, rowCount }.',
+        'Results come back as { columns, rows, truncated, rowCount, elapsedMs }. ' + ENGINE_HINT,
       parameters: {
-        source: { type: 'string', description: 'Source id from mssql_sources; optional.' },
+        source: { type: 'string', description: 'Source id from db_sources; optional.' },
         sql: {
           type: 'string',
           required: true,
-          description: 'Single read-only T-SQL statement with @p0-style placeholders.',
+          description: 'Single read-only statement with the engine-specific placeholders (@p0 / $1 / ?).',
         },
         params: {
           type: 'array',
           items: { type: 'json' },
-          description: 'Bound values for @p0, @p1 … in order.',
+          description: 'Bound values for the placeholders, in order.',
         },
         limit: { type: 'integer', description: 'Max rows to return (default 100, hard cap 500).' },
       },
@@ -280,12 +267,11 @@ export function apply(ctx: Context, config: Config = {}): void {
           assertReadonlySql(args.sql)
           const result = await runQuery(
             source,
-            resolvePassword(source),
             args.sql,
             Array.isArray(args.params) ? args.params : undefined,
             clampLimit(args.limit),
           )
-          return JSON.stringify({ source: source.id, ...result }, null, 2)
+          return JSON.stringify({ source: source.id, engine: source.engine, ...result }, null, 2)
         } catch (error) {
           return fail(error)
         }
@@ -296,13 +282,13 @@ export function apply(ctx: Context, config: Config = {}): void {
 
   ctx.tools.register(
     defineTool({
-      name: 'mssql_execute',
+      name: 'db_execute',
       description:
         'Run ONE write statement (INSERT / UPDATE / DELETE / MERGE) against a writable source. ' +
         'Requires the source to be configured writable AND an explicit allowWrite: true. ' +
-        'DDL needs allowDdl on the source. Read data with mssql_query instead.',
+        'DDL needs allowDdl on the source. Read data with db_query instead.',
       parameters: {
-        source: { type: 'string', description: 'Source id from mssql_sources; optional.' },
+        source: { type: 'string', description: 'Source id from db_sources; optional.' },
         sql: { type: 'string', required: true, description: 'Single write statement.' },
         allowWrite: {
           type: 'boolean',
@@ -312,7 +298,7 @@ export function apply(ctx: Context, config: Config = {}): void {
         params: {
           type: 'array',
           items: { type: 'json' },
-          description: 'Bound values for @p0, @p1 … in order.',
+          description: 'Bound values for the placeholders, in order.',
         },
       },
       output: {
@@ -323,10 +309,10 @@ export function apply(ctx: Context, config: Config = {}): void {
         try {
           const source = pick(args.source)
           if (source.writable !== true) {
-            return `mssql: 源 ${source.id} 是只读的（writable 未开启），拒绝写操作`
+            return 'db: 源 ' + source.id + ' 是只读的（writable 未开启），拒绝写操作'
           }
           if (args.allowWrite !== true) {
-            return `mssql: 写操作需要显式 allowWrite: true（源 ${source.id}）`
+            return 'db: 写操作需要显式 allowWrite: true（源 ' + source.id + '）'
           }
           assertWriteSql(args.sql, {
             allowDdl: source.allowDdl === true,
@@ -334,11 +320,10 @@ export function apply(ctx: Context, config: Config = {}): void {
           })
           const result = await runExecute(
             source,
-            resolvePassword(source),
             args.sql,
             Array.isArray(args.params) ? args.params : undefined,
           )
-          return JSON.stringify({ source: source.id, ...result }, null, 2)
+          return JSON.stringify({ source: source.id, engine: source.engine, ...result }, null, 2)
         } catch (error) {
           return fail(error)
         }
@@ -347,7 +332,7 @@ export function apply(ctx: Context, config: Config = {}): void {
     }),
   )
 
-  // 设置页（Settings → SQL Server 数据源）：浏览器侧经 connection 打 RPC，宿主侧读写同一份 sources.json。
+  // 会话标签页 / 设置页：浏览器侧经 connection 打 RPC，宿主侧读写同一份 sources.json。
   applySettingsRpc(ctx, {
     filePath: () => filePath,
     configDriven: () => Array.isArray(config.sources) && config.sources.length > 0,
@@ -357,9 +342,11 @@ export function apply(ctx: Context, config: Config = {}): void {
       fromConfig = null
     },
     probe: async (source) => {
-      const info = await probe(source, resolvePassword(source))
+      const info = await probe(source)
       return { version: info.version, database: info.database }
     },
+    query: async (source, sql, limit) => runQuery(source, sql, undefined, limit),
+    execute: async (source, sql) => runExecute(source, sql, undefined),
   })
 
   // 插件卸载/重载时关闭连接池；disposer 由 cordis 在 fiber 卸载时调用。
