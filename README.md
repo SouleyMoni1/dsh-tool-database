@@ -76,8 +76,11 @@ DeepSeek Harness 的**数据库原生工具插件**：一套工具同时连 **SQ
 ### Web profile
 
 ```bash
-dsh plugin --profile web add dsh-tool-database
+dsh plugin --profile web add dsh-tool-database@0.2.0
 ```
+
+> 建议带上显式版本号：npm 上还留着一个早期占位版本 `0.0.0-stage`（tarball 已损坏，删不掉），
+> 不带版本号时 pnpm 有机会解析到它并报 `ERR_PNPM_TARBALL_EXTRACT`。
 
 ### 桌面端（desktop profile，由 Electron 应用独占管理）
 
@@ -87,8 +90,10 @@ dsh plugin --profile web add dsh-tool-database
 
 1. `~/.dsh/profiles/desktop/package.json` 的 `dependencies` 加 `"dsh-tool-database": "^0.2.0"`；
 2. 同一文件的 `dsh.profile.bundles` 数组加 `"dsh-tool-database"`；
-3. 在 profile 目录里用应用自带的那份 pnpm 执行 `pnpm install`
-   （`~/.dsh/dsh-runtimes/dsh-primary-runtime/dependencies/{node,pnpm}`），然后重启 DSH。
+3. 在 profile 目录里用**与该 profile 同大版本**的 pnpm 执行安装，然后重启 DSH：
+   桌面 profile 当前是 pnpm `11.28.5`（store 在 `~/AppData/Local/pnpm/store/v11`），
+   用 v10 会报 “node_modules was installed with a different major version of pnpm”，
+   直接 `cd ~/.dsh/profiles/desktop && npx --yes pnpm@11.28.5 add dsh-tool-database@0.2.0` 最稳。
 
 装完**重启 DSH**：6 个工具、会话标签页、设置页标签都要重启后才出现（`sources.json` 的改动不用重启）。
 
