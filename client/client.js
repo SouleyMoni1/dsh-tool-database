@@ -95,6 +95,14 @@ window.__ModuleLoader__.load({
       query: '查询',
       sql: 'SQL',
       sqlHint: 'Ctrl / Cmd + Enter 执行。只读连接只能 SELECT；写语句受「控制台写策略」和数据源开关双重限制。',
+      formatSql: '格式化',
+      copySql: '复制 SQL',
+      copyResult: '复制结果',
+      copied: '已复制',
+      copyFailed: '复制失败',
+      editorHint: 'Tab 缩进，Ctrl + 空格 补全',
+      columnTag: '字段',
+      tableTag: '表',
       run: '执行',
       running: '执行中…',
       rows: '行',
@@ -169,6 +177,14 @@ window.__ModuleLoader__.load({
       query: 'Query',
       sql: 'SQL',
       sqlHint: 'Ctrl / Cmd + Enter to run. Read-only connections can only SELECT; writes are gated by the console policy and the source switches.',
+      formatSql: 'Format',
+      copySql: 'Copy SQL',
+      copyResult: 'Copy result',
+      copied: 'Copied',
+      copyFailed: 'Copy failed',
+      editorHint: 'Tab to indent, Ctrl + Space to complete',
+      columnTag: 'column',
+      tableTag: 'table',
       run: 'Run',
       running: 'Running…',
       rows: 'rows',
@@ -211,7 +227,7 @@ window.__ModuleLoader__.load({
       styled = true
       const style = document.createElement('style')
       style.textContent = [
-        '.dbx-root{display:flex;height:100%;min-height:0;box-sizing:border-box;padding:14px 16px;gap:14px;font-size:13px;color:var(--dsw-alias-label-primary,inherit)}',
+        '.dbx-root{display:flex;height:100%;max-height:100%;min-height:0;overflow:hidden;box-sizing:border-box;padding:14px 16px;gap:14px;font-size:13px;color:var(--dsw-alias-label-primary,inherit)}',
         '.dbx-page{display:flex;flex-direction:column;height:100%;min-height:0;box-sizing:border-box;padding:14px 16px;gap:12px;font-size:13px;color:var(--dsw-alias-label-primary,inherit)}',
         '.dbx-page-head{display:flex;align-items:baseline;gap:10px;flex:none}',
         '.dbx-page-title{font-size:15px;font-weight:600;margin:0}',
@@ -225,7 +241,7 @@ window.__ModuleLoader__.load({
         '.dbx-input:focus,.dbx-pw-input:focus{border-color:var(--dsw-alias-state-accent-primary,color-mix(in srgb,currentColor 45%,transparent))}',
         '.dbx-pw-btn{position:absolute;right:6px;top:50%;transform:translateY(-50%);width:24px;height:24px;display:inline-flex;align-items:center;justify-content:center;border:0;background:transparent;color:inherit;opacity:.6;cursor:pointer;padding:0;border-radius:4px}',
         '.dbx-pw-btn:hover{opacity:1}',
-        '.dbx-main{flex:1;min-width:0;display:flex;flex-direction:column;min-height:0}',
+        '.dbx-main{flex:1;min-width:0;display:flex;flex-direction:column;min-height:0;overflow:hidden}',
         '.dbx-side-head{display:flex;flex-direction:column;gap:6px}',
         '.dbx-search{width:100%;box-sizing:border-box;min-width:0}',
         '.dbx-side-head input,.dbx-side-head select{box-sizing:border-box;max-width:100%}',
@@ -252,7 +268,7 @@ window.__ModuleLoader__.load({
         '.dbx-group + .dbx-group{margin-top:4px}',
         '.dbx-foot{font-size:11px;color:var(--dsw-alias-label-tertiary,color-mix(in srgb,currentColor 55%,transparent));word-break:break-all;line-height:1.5}',
         '.dbx-main-head{display:flex;align-items:center;gap:8px;padding:10px 14px;border-bottom:1px solid var(--dsw-alias-border-l2,color-mix(in srgb,currentColor 14%,transparent));flex-wrap:wrap}',
-        '.dbx-main-body{padding:14px;overflow:auto;flex:1;min-height:0}',
+        '.dbx-main-body{padding:14px;overflow:auto;flex:1;min-height:0;max-height:100%}',
         '.dbx-title{font-weight:600;font-size:14px;margin:0}',
         '.dbx-muted{color:var(--dsw-alias-label-tertiary,color-mix(in srgb,currentColor 55%,transparent));font-size:12px;line-height:1.5}',
         '.dbx-intro{font-size:14px;font-weight:600;margin:0 0 6px}',
@@ -265,17 +281,40 @@ window.__ModuleLoader__.load({
         '.dbx-label{font-size:12px;color:var(--dsw-alias-label-secondary,color-mix(in srgb,currentColor 75%,transparent))}',
         '.dbx-actions{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-top:14px}',
         '.dbx-select{height:30px;border-radius:6px;border:1px solid var(--dsw-alias-border-l2,color-mix(in srgb,currentColor 18%,transparent));background:var(--dsw-alias-bg-layer-1,transparent);color:inherit;font:inherit;padding:0 8px;min-width:140px}',
-        '.dbx-sql{width:100%;min-height:150px;resize:vertical;border-radius:8px;border:1px solid var(--dsw-alias-border-l2,color-mix(in srgb,currentColor 18%,transparent));background:var(--dsw-alias-bg-layer-1,transparent);color:inherit;padding:10px;font-family:var(--dsw-font-markdown-code-block,ui-monospace,SFMono-Regular,Menlo,monospace);font-size:12px;line-height:1.55;box-sizing:border-box}',
-        '.dbx-status{font-size:12px;color:var(--dsw-alias-label-tertiary,color-mix(in srgb,currentColor 55%,transparent))}',
+        '.dbx-sql{width:100%;min-height:170px;resize:vertical;border-radius:8px;border:1px solid var(--dsw-alias-border-l2,color-mix(in srgb,currentColor 18%,transparent));background:var(--dsw-alias-bg-layer-1,transparent);color:inherit;padding:10px;font-family:var(--dsw-font-markdown-code-block,ui-monospace,SFMono-Regular,Menlo,monospace);font-size:12px;line-height:1.55;box-sizing:border-box}',
+        '.dbx-editor{display:flex;flex-direction:column;gap:6px;min-width:0}',
+        '.dbx-editor-bar{display:flex;align-items:center;gap:8px;flex-wrap:wrap}',
+        '.dbx-editor-box{position:relative;width:100%;box-sizing:border-box}',
+        '.dbx-editor-box .dbx-sql{position:relative;z-index:1;display:block;color:transparent;background:transparent;caret-color:var(--dsw-alias-label-primary,currentColor);white-space:pre-wrap;word-break:break-word;overflow:auto;scrollbar-gutter:stable;letter-spacing:normal;word-spacing:normal;font-variant-ligatures:none;text-transform:none;tab-size:4}',
+        '.dbx-editor-box .dbx-sql::selection{background:color-mix(in srgb,currentColor 22%,transparent);color:var(--dsw-alias-label-primary,#1f2328);-webkit-text-fill-color:var(--dsw-alias-label-primary,#1f2328)}',
+        '.dbx-hl{position:absolute;inset:0;z-index:0;margin:0;overflow:hidden;pointer-events:none;white-space:pre-wrap;word-break:break-word;border:1px solid transparent;border-radius:8px;padding:10px calc(10px + var(--dbx-gutter,0px)) 10px 10px;font-family:var(--dsw-font-markdown-code-block,ui-monospace,SFMono-Regular,Menlo,monospace);font-size:12px;line-height:1.55;box-sizing:border-box;color:var(--dsw-alias-label-primary,inherit);letter-spacing:normal;word-spacing:normal;font-variant-ligatures:none;text-transform:none;tab-size:4}',
+        '.dbx-tok-kw{color:var(--dsw-alias-state-info-primary,#2563eb)}',
+        '.dbx-tok-str{color:var(--dsw-alias-state-success-primary,#15803d)}',
+        '.dbx-tok-num{color:var(--dsw-alias-state-warning-primary,#b45309)}',
+        '.dbx-tok-cmt{color:var(--dsw-alias-label-tertiary,color-mix(in srgb,currentColor 55%,transparent))}',
+        '.dbx-tok-id{color:inherit}',
+        '.dbx-sug{position:absolute;z-index:5;min-width:170px;max-width:340px;max-height:200px;overflow:auto;border-radius:8px;border:1px solid var(--dsw-alias-border-l2,color-mix(in srgb,currentColor 22%,transparent));background:var(--dsw-alias-bg-layer-1,Canvas);box-shadow:0 8px 24px rgba(0,0,0,.16);padding:4px 0}',
+        '.dbx-sug-item{display:flex;align-items:center;gap:8px;padding:5px 10px;font-family:var(--dsw-font-markdown-code-block,ui-monospace,monospace);font-size:12px;cursor:pointer;white-space:nowrap;overflow:hidden;color:var(--dsw-alias-label-primary,inherit)}',
+        '.dbx-sug-name{overflow:hidden;text-overflow:ellipsis}',
+        '.dbx-sug-kind{margin-left:auto;flex:none;font-size:10px;opacity:.6}',
+        '.dbx-sug-active{background:var(--dsw-alias-state-accent-primary,#2563eb);color:#fff}',
+        '.dbx-result{display:flex;flex-direction:column;gap:6px;min-width:0}',
+        '.dbx-result-bar{display:flex;align-items:center;justify-content:flex-end;gap:8px;padding:0 2px}',
+        '.dbx-table-wrap{max-width:100%;overflow:auto}',
+        '.dbx-status{display:flex;align-items:center;gap:8px;font-size:12px;color:var(--dsw-alias-label-tertiary,color-mix(in srgb,currentColor 55%,transparent))}',
         '.dbx-table-wrap{overflow:auto;border:1px solid var(--dsw-alias-border-l2,color-mix(in srgb,currentColor 14%,transparent));border-radius:8px;margin-top:10px;max-height:52vh}',
         '.dbx-table{border-collapse:collapse;width:100%;font-size:12px}',
         '.dbx-table th,.dbx-table td{border-bottom:1px solid var(--dsw-alias-border-l1,color-mix(in srgb,currentColor 10%,transparent));padding:4px 8px;text-align:left;vertical-align:top;white-space:pre;max-width:420px;overflow:hidden;text-overflow:ellipsis}',
-        '.dbx-table th{position:sticky;top:0;background:var(--dsw-alias-bg-layer-2,#fafafa);font-weight:600;z-index:1}',
+        '.dbx-table th{position:sticky;top:0;background:color-mix(in srgb,currentColor 7%,Canvas);font-weight:600;font-size:13px;letter-spacing:.01em;color:var(--dsw-alias-label-primary,inherit);border-bottom:1px solid color-mix(in srgb,currentColor 22%,transparent);padding:7px 8px;z-index:1}',
         '.dbx-null{color:var(--dsw-alias-label-tertiary,color-mix(in srgb,currentColor 45%,transparent));font-style:italic}',
         '.dbx-details{margin-top:12px;font-size:12px;max-width:860px;min-width:0}',
         '.dbx-details summary{cursor:pointer;color:var(--dsw-alias-label-secondary,color-mix(in srgb,currentColor 75%,transparent))}',
-        '.dbx-console{display:flex;flex-direction:column;height:100%;min-height:0}',
-        '.dbx-console-body{padding:12px 14px;display:flex;flex-direction:column;gap:8px;flex:1;min-height:0;overflow:auto}',
+        '.dbx-console{display:flex;flex-direction:column;height:100%;min-height:0;overflow:hidden}',
+        '.dbx-console-body{padding:12px 14px;display:flex;flex-direction:column;gap:8px;flex:1;min-height:0;overflow:hidden}',
+        '.dbx-editor{flex:none}',
+        '.dbx-result{flex:1;min-height:0}',
+        '.dbx-table-wrap{flex:1;min-height:120px;max-height:none}',
+        '.dbx-console-body>.dbx-status,.dbx-console-body>.dbx-muted,.dbx-console-body>.dbx-error{flex:none}',
       ].join('\n')
       document.head.appendChild(style)
     }
@@ -337,7 +376,424 @@ window.__ModuleLoader__.load({
       )
     }
 
-    function ResultTable(props) {
+    const SQL_KEYWORDS = [
+      'SELECT','FROM','WHERE','GROUP','BY','ORDER','HAVING','LIMIT','OFFSET','TOP','DISTINCT','AS','AND','OR','NOT','IN','LIKE','BETWEEN','IS','NULL','EXISTS','UNION','ALL','JOIN','LEFT','RIGHT','INNER','OUTER','FULL','CROSS','ON','INSERT','INTO','VALUES','UPDATE','SET','DELETE','CREATE','TABLE','VIEW','INDEX','ALTER','DROP','TRUNCATE','CASE','WHEN','THEN','ELSE','END','WITH','OVER','PARTITION','ASC','DESC','COUNT','SUM','AVG','MIN','MAX','CAST','CONVERT','COALESCE','ISNULL','NULLIF','GETDATE','NOW','SUBSTRING','LEN','LENGTH','TRIM','UPPER','LOWER','REPLACE','ROW_NUMBER','RANK','IF','BEGIN','COMMIT','ROLLBACK','EXEC','DECLARE','PRINT','STRING_AGG','IIF','CHARINDEX','STUFF','APPLY','FETCH','ROWS','ONLY','USE','GO',
+    ]
+    const KEYWORD_RE = new RegExp('^(?:' + SQL_KEYWORDS.join('|') + ')$', 'i')
+    function highlightSql(text) {
+      const parts = []
+      const pattern = /(--[^\n]*|\/\*[\s\S]*?\*\/)|('(?:[^']|'')*'|"(?:[^"]|"")*")|\b(\d+(?:\.\d+)?)\b|([A-Za-z_][A-Za-z0-9_$]*)|(\s+)|([\s\S])/g
+      let match
+      let key = 0
+      while ((match = pattern.exec(text)) !== null) {
+        const raw = match[0]
+        if (match[1]) parts.push(h('span', { key: key++, className: 'dbx-tok-cmt' }, raw))
+        else if (match[2]) parts.push(h('span', { key: key++, className: 'dbx-tok-str' }, raw))
+        else if (match[3]) parts.push(h('span', { key: key++, className: 'dbx-tok-num' }, raw))
+        else if (match[4]) {
+          parts.push(h('span', { key: key++, className: KEYWORD_RE.test(raw) ? 'dbx-tok-kw' : 'dbx-tok-id' }, raw))
+        } else parts.push(h('span', { key: key++ }, raw))
+        if (match.index === pattern.lastIndex) pattern.lastIndex++
+      }
+      return parts
+    }
+    const SQL_CLAUSES = [
+      'SELECT','FROM','WHERE','GROUP BY','ORDER BY','HAVING','UNION ALL','UNION','INSERT INTO','VALUES',
+      'UPDATE','SET','DELETE FROM','LEFT OUTER JOIN','RIGHT OUTER JOIN','LEFT JOIN','RIGHT JOIN','INNER JOIN',
+      'FULL JOIN','CROSS JOIN','JOIN','ON','LIMIT','OFFSET','WITH',
+    ]
+
+    function formatSql(text) {
+      if (!text || !text.trim()) return text
+      const pieces = text.split(/(--[^\n]*|\/\*[\s\S]*?\*\/|'(?:[^']|'')*'|"(?:[^"]|"")*")/g)
+      const formatCode = (code) => {
+        let out = code.replace(/\s+/g, ' ')
+        if (!out.trim()) return out
+        for (const clause of SQL_CLAUSES) {
+          const body = clause.replace(/ /g, '\\s+')
+          out = out.replace(new RegExp('\\s+(' + body + ')\\b', 'gi'), '\n$1')
+        }
+        for (const keyword of SQL_KEYWORDS) {
+          out = out.replace(new RegExp('\\b' + keyword + '\\b', 'gi'), (found) => found.toUpperCase())
+        }
+        out = out.replace(/\s+(AND|OR)\b/gi, '\n  $1')
+        return out
+      }
+      return pieces
+        .map((piece, index) => (index % 2 === 1 ? piece : formatCode(piece)))
+        .join('')
+        .split('\n')
+        .map((line) => line.replace(/\s+$/, ''))
+        .join('\n')
+        .replace(/\n{3,}/g, '\n\n')
+        .trim()
+    }
+
+    async function copyText(text) {
+      try {
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+          await navigator.clipboard.writeText(text)
+          return true
+        }
+      } catch (cause) {
+        /* 退回 execCommand */
+      }
+      try {
+        const area = document.createElement('textarea')
+        area.value = text
+        area.style.position = 'fixed'
+        area.style.opacity = '0'
+        document.body.appendChild(area)
+        area.select()
+        const ok = document.execCommand('copy')
+        document.body.removeChild(area)
+        return ok
+      } catch (cause) {
+        return false
+      }
+    }
+
+    function resultToTsv(result) {
+      if (!result || !result.columns || result.columns.length === 0) return ''
+      const cell = (value) => {
+        if (value === null || value === undefined) return ''
+        const text = typeof value === 'string' ? value : JSON.stringify(value)
+        return String(text).replace(/\t/g, ' ').replace(/\r?\n/g, ' ')
+      }
+      const lines = [result.columns.join('\t')]
+      for (const row of result.rows || []) lines.push(row.map(cell).join('\t'))
+      return lines.join('\n')
+    }
+    function CopyIcon() {
+      return h(
+        'svg',
+        { width: 14, height: 14, viewBox: '0 0 16 16', fill: 'none', 'aria-hidden': 'true' },
+        h('rect', { x: 5.2, y: 5.2, width: 8, height: 8, rx: 1.6, stroke: 'currentColor', strokeWidth: 1.2 }),
+        h('path', {
+          d: 'M10.8 5.2V3.8c0-.6-.5-1.1-1.1-1.1H3.8c-.6 0-1.1.5-1.1 1.1v5.9c0 .6.5 1.1 1.1 1.1h1.4',
+          stroke: 'currentColor',
+          strokeWidth: 1.2,
+          strokeLinecap: 'round',
+        }),
+      )
+    }
+
+    function SqlEditor(props) {
+      const t = props.t
+      const value = props.value
+      const onChange = props.onChange
+      const taRef = React.useRef(null)
+      const hlRef = React.useRef(null)
+      const [tables, setTables] = React.useState([])
+      const [menu, setMenu] = React.useState(null)
+      const [toast, setToast] = React.useState('')
+      const highlighted = React.useMemo(() => highlightSql(value + '\n'), [value])
+      const boxRef = React.useRef(null)
+      const sugRef = React.useRef(null)
+      React.useEffect(() => {
+        const syncGutter = () => {
+          const area = taRef.current
+          const box = boxRef.current
+          if (!area || !box) return
+          const gutter = Math.max(0, area.offsetWidth - area.clientWidth - 2)
+          box.style.setProperty('--dbx-gutter', gutter + 'px')
+        }
+        syncGutter()
+        window.addEventListener('resize', syncGutter)
+        return () => window.removeEventListener('resize', syncGutter)
+      }, [value])
+
+      React.useEffect(() => {
+        if (!props.sourceId) return
+        let alive = true
+        call('meta/tables', { source: props.sourceId })
+          .then((result) => {
+            if (!alive || !result || !result.tables) return
+            setTables(result.tables.slice(0, 500))
+          })
+          .catch(() => {
+            /* 拿不到表名就只提示关键字 */
+          })
+        return () => {
+          alive = false
+        }
+      }, [props.sourceId])
+
+      // SQL 里出现的表（FROM / JOIN 后面的第一个标识符）→ 拉这个表的字段名做补全
+      const currentTable = React.useMemo(() => {
+        const matched = value.match(/\b(?:from|join|update|into)\s+([A-Za-z_][A-Za-z0-9_.$#]*)/gi)
+        if (!matched || matched.length === 0) return ''
+        const last = matched[matched.length - 1]
+        const name = last.replace(/\b(?:from|join|update|into)\s+/i, '')
+        return name.split('.').pop() || ''
+      }, [value])
+      const columnCache = React.useRef({})
+      const [columns, setColumns] = React.useState([])
+      React.useEffect(() => {
+        if (!props.sourceId || !currentTable) {
+          setColumns([])
+          return
+        }
+        const key = props.sourceId + '::' + currentTable
+        const cached = columnCache.current[key]
+        if (cached) {
+          setColumns(cached)
+          return
+        }
+        let alive = true
+        call('meta/columns', { source: props.sourceId, table: currentTable })
+          .then((result) => {
+            if (!alive || !result || !result.columns) return
+            const names = result.columns.map((item) => item.name)
+            columnCache.current[key] = names
+            setColumns(names)
+          })
+          .catch(() => {
+            if (alive) setColumns([])
+          })
+        return () => {
+          alive = false
+        }
+      }, [props.sourceId, currentTable])
+
+      // 上下键切换后把选中项滚进可视区
+      React.useEffect(() => {
+        if (!menu) return
+        const list = sugRef.current
+        if (!list) return
+        const active = list.querySelector('.dbx-sug-active')
+        if (active) active.scrollIntoView({ block: 'nearest' })
+      }, [menu && menu.index])
+
+      // 字段/表名是异步拿到的：拿到后如果候选框还开着，用新数据重算一次
+      React.useEffect(() => {
+        const area = taRef.current
+        if (!area || document.activeElement !== area) return
+        if (!menu) return
+        openMenu(value, area.selectionStart, false)
+      }, [columns, tables])
+
+      const wordBefore = (text, caret) => {
+        const matched = text.slice(0, caret).match(/[A-Za-z_][A-Za-z0-9_]*$/)
+        return { prefix: matched ? matched[0] : '', start: matched ? caret - matched[0].length : caret }
+      }
+      const openMenu = (text, caret, force) => {
+        const { prefix, start } = wordBefore(text, caret)
+        const afterDot = caret > 0 && text.charAt(caret - 1) === '.'
+        const minLength = columns.length > 0 ? 1 : 2
+        if (!force && !afterDot && prefix.length < minLength) {
+          setMenu(null)
+          return
+        }
+        const lower = prefix.toLowerCase()
+        const pool = columns.map((name) => ({ name: name, kind: 'col' }))
+          .concat(SQL_KEYWORDS.map((name) => ({ name: name, kind: 'kw' })))
+          .concat(tables.map((name) => ({ name: name, kind: 'tbl' })))
+        const seen = {}
+        const items = []
+        for (const item of pool) {
+          const lowered = item.name.toLowerCase()
+          if (lower && lowered.indexOf(lower) !== 0) continue
+          if (lowered === lower) continue
+          if (seen[lowered]) continue
+          seen[lowered] = true
+          items.push(item)
+          if (items.length >= 12) break
+        }
+        const point = caretPoint(caret)
+        const box = boxRef.current
+        if (box) point.left = Math.min(point.left, Math.max(0, box.clientWidth - 350))
+        setMenu(items.length ? { items: items, start: start, end: caret, index: 0, point: point } : null)
+      }
+      /** 光标在输入框里的像素位置（相对编辑器外框），用于把候选列表挂到光标下面。 */
+      const caretPoint = (caret) => {
+        const area = taRef.current
+        const box = boxRef.current
+        if (!area || !box) return { left: 0, top: 0 }
+        const cs = window.getComputedStyle(area)
+        const mirror = document.createElement('div')
+        const props = [
+          'font-family',
+          'font-size',
+          'font-weight',
+          'font-style',
+          'line-height',
+          'letter-spacing',
+          'word-spacing',
+          'font-variant-ligatures',
+          'text-transform',
+          'tab-size',
+          'padding-top',
+          'padding-right',
+          'padding-bottom',
+          'padding-left',
+          'border-top-width',
+          'border-right-width',
+          'border-bottom-width',
+          'border-left-width',
+          'box-sizing',
+        ]
+        let css = 'position:absolute;left:0;top:0;visibility:hidden;white-space:pre-wrap;word-break:break-word;'
+        for (const name of props) {
+          const camel = name.replace(/-(\w)/g, (all, ch) => ch.toUpperCase())
+          css += name + ':' + cs[camel] + ';'
+        }
+        mirror.style.cssText = css + 'width:' + area.clientWidth + 'px;'
+        mirror.textContent = value.slice(0, caret)
+        const marker = document.createElement('span')
+        marker.textContent = 'x'
+        mirror.appendChild(marker)
+        document.body.appendChild(mirror)
+        const markerRect = marker.getBoundingClientRect()
+        const mirrorRect = mirror.getBoundingClientRect()
+        document.body.removeChild(mirror)
+        const lineHeight = parseFloat(cs.lineHeight) || 18
+        const left = markerRect.left - mirrorRect.left - area.scrollLeft
+        const top = markerRect.top - mirrorRect.top - area.scrollTop + lineHeight
+        return { left: Math.max(0, Math.round(left)), top: Math.max(0, Math.round(top)) }
+      }
+      const accept = (item) => {
+        if (!menu) return
+        const name = item && item.name ? item.name : String(item)
+        const next = value.slice(0, menu.start) + name + ' ' + value.slice(menu.end)
+        onChange(next)
+        setMenu(null)
+        const caret = menu.start + name.length + 1
+        window.requestAnimationFrame(() => {
+          const area = taRef.current
+          if (area) {
+            area.focus()
+            area.setSelectionRange(caret, caret)
+          }
+        })
+      }
+      const flash = (message) => {
+        setToast(message)
+        window.setTimeout(() => setToast(''), 1600)
+      }
+      const onKeyDown = (event) => {
+        const area = event.target
+        if (menu) {
+          if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+            event.preventDefault()
+            const delta = event.key === 'ArrowDown' ? 1 : -1
+            setMenu(Object.assign({}, menu, { index: (menu.index + delta + menu.items.length) % menu.items.length }))
+            return
+          }
+          if (event.key === 'Enter' || event.key === 'Tab') {
+            event.preventDefault()
+            accept(menu.items[menu.index])
+            return
+          }
+          if (event.key === 'Escape') {
+            event.preventDefault()
+            setMenu(null)
+            return
+          }
+        }
+        if (event.key === 'Tab') {
+          event.preventDefault()
+          const start = area.selectionStart
+          const end = area.selectionEnd
+          onChange(value.slice(0, start) + '  ' + value.slice(end))
+          window.requestAnimationFrame(() => area.setSelectionRange(start + 2, start + 2))
+          return
+        }
+        if (event.key === ' ' && (event.ctrlKey || event.metaKey)) {
+          event.preventDefault()
+          openMenu(value, area.selectionStart, true)
+          return
+        }
+        if ((event.ctrlKey || event.metaKey) && event.key === 'Enter') {
+          event.preventDefault()
+          setMenu(null)
+          props.onRun()
+        }
+      }
+      const syncScroll = (event) => {
+        const hl = hlRef.current
+        if (!hl) return
+        hl.scrollTop = event.target.scrollTop
+        hl.scrollLeft = event.target.scrollLeft
+      }
+      return h(
+        'div',
+        { className: 'dbx-editor' },
+        h(
+          'div',
+          { className: 'dbx-editor-bar' },
+          h(
+            Button,
+            { size: 'sm', variant: 'ghost', disabled: props.disabled, onClick: () => onChange(formatSql(value)) },
+            t('formatSql'),
+          ),
+          h(
+            Button,
+            {
+              size: 'sm',
+              variant: 'ghost',
+              onClick: async () => flash((await copyText(value)) ? t('copied') : t('copyFailed')),
+            },
+            t('copySql'),
+          ),
+          h('span', { className: 'dbx-muted' }, t('editorHint')),
+          toast ? h('span', { className: 'dbx-tag dbx-tag-write' }, toast) : null,
+        ),
+        h(
+          'div',
+          { className: 'dbx-editor-box', ref: boxRef },
+          h('pre', { className: 'dbx-hl', ref: hlRef, 'aria-hidden': 'true' }, highlighted),
+          h('textarea', {
+            className: 'dbx-sql',
+            ref: taRef,
+            value: value,
+            spellCheck: false,
+            placeholder: 'SELECT TOP 10 * FROM ...',
+            onKeyDown: onKeyDown,
+            onScroll: syncScroll,
+            onChange: (event) => {
+              onChange(event.target.value)
+              openMenu(event.target.value, event.target.selectionStart, false)
+            },
+            onBlur: () => setMenu(null),
+          }),
+          menu
+            ? h(
+                'div',
+                {
+                  className: 'dbx-sug',
+                  ref: sugRef,
+                  style: {
+                    left: (menu.point ? menu.point.left : 0) + 'px',
+                    top: (menu.point ? menu.point.top : 0) + 'px',
+                  },
+                },
+                menu.items.map((item, index) =>
+                  h(
+                    'div',
+                    {
+                      key: item.kind + ':' + item.name,
+                      className: index === menu.index ? 'dbx-sug-item dbx-sug-active' : 'dbx-sug-item',
+                      onMouseEnter: () => setMenu(Object.assign({}, menu, { index: index })),
+                      onMouseDown: (event) => {
+                        event.preventDefault()
+                        accept(item)
+                      },
+                    },
+                    h('span', { className: 'dbx-sug-name' }, item.name),
+                    item.kind === 'col'
+                      ? h('span', { className: 'dbx-sug-kind' }, t('columnTag'))
+                      : item.kind === 'tbl'
+                        ? h('span', { className: 'dbx-sug-kind' }, t('tableTag'))
+                        : null,
+                  ),
+                ),
+              )
+            : null,
+        ),
+      )
+    }
+    const ResultTable = React.memo(function ResultTable(props) {
       const result = props.result
       if (!result) return null
       if (!result.columns || result.columns.length === 0) {
@@ -349,9 +805,12 @@ window.__ModuleLoader__.load({
       }
       return h(
         'div',
-        { className: 'dbx-table-wrap' },
+        { className: 'dbx-result' },
         h(
-          'table',
+          'div',
+          { className: 'dbx-table-wrap' },
+          h(
+            'table',
           { className: 'dbx-table' },
           h('thead', null, h('tr', null, result.columns.map((col) => h('th', { key: col }, col)))),
           h(
@@ -371,9 +830,10 @@ window.__ModuleLoader__.load({
               ),
             ),
           ),
+          ),
         ),
       )
-    }
+    })
 
     function ConnectionForm(props) {
       const t = props.t
@@ -623,6 +1083,12 @@ window.__ModuleLoader__.load({
       const [running, setRunning] = React.useState(false)
       const [error, setError] = React.useState('')
       const [result, setResult] = React.useState(null)
+      const [copied, setCopied] = React.useState('')
+      const copyResult = async () => {
+        const ok = await copyText(resultToTsv(result))
+        setCopied(ok ? t('copied') : t('copyFailed'))
+        window.setTimeout(() => setCopied(''), 1600)
+      }
       const run = async () => {
         setRunning(true)
         setError('')
@@ -669,13 +1135,13 @@ window.__ModuleLoader__.load({
         h(
           'div',
           { className: 'dbx-console-body' },
-          h('textarea', {
-            className: 'dbx-sql',
+          h(SqlEditor, {
+            t: t,
             value: sql,
-            spellCheck: false,
-            onKeyDown: onKeyDown,
-            onChange: (event) => setSql(event.target.value),
-            placeholder: 'SELECT TOP 10 * FROM ...',
+            onChange: setSql,
+            onRun: () => void run(),
+            sourceId: source.id,
+            disabled: running,
           }),
           h('span', { className: 'dbx-muted' }, t('sqlHint')),
           error ? h('div', { className: 'dbx-err' }, error) : null,
@@ -683,15 +1149,33 @@ window.__ModuleLoader__.load({
             ? h(
                 'div',
                 { className: 'dbx-status' },
-                (result.wrote
-                  ? t('wrote') + ' · ' + t('affected') + ': ' + String(result.rowsAffected || 0)
-                  : String(result.rowCount) + ' ' + t('rows')) +
-                  ' · ' +
-                  t('elapsed') +
-                  ' ' +
-                  String(result.elapsedMs) +
-                  ' ms' +
-                  (result.truncated ? ' · ' + t('truncated') : ''),
+                h(
+                  'span',
+                  null,
+                  (result.wrote
+                    ? t('wrote') + ' · ' + t('affected') + ': ' + String(result.rowsAffected || 0)
+                    : String(result.rowCount) + ' ' + t('rows')) +
+                    ' · ' +
+                    t('elapsed') +
+                    ' ' +
+                    String(result.elapsedMs) +
+                    ' ms' +
+                    (result.truncated ? ' · ' + t('truncated') : ''),
+                ),
+                result.columns && result.columns.length
+                  ? h(
+                      Button,
+                      {
+                        size: 'sm',
+                        variant: 'ghost',
+                        title: t('copyResult'),
+                        'aria-label': t('copyResult'),
+                        onClick: () => void copyResult(),
+                      },
+                      CopyIcon(),
+                    )
+                  : null,
+                copied ? h('span', { className: 'dbx-tag dbx-tag-write' }, copied) : null,
               )
             : null,
           h(ResultTable, { result: result, t: t }),

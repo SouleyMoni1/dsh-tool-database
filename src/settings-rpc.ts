@@ -292,6 +292,37 @@ async function dispatch(deps: SettingsRpcDeps, endpoint: string, payload: unknow
       return ok({ id: found.id, secret: found.password ?? '', env: found.passwordEnv ?? '' })
     }
 
+    case 'meta/tables': {
+      const source = requireSource(deps, text(body.source))
+      const result = (await deps.query(
+        source,
+        'SELECT DISTINCT TABLE_NAME AS name FROM INFORMATION_SCHEMA.TABLES ORDER BY TABLE_NAME',
+        500,
+      )) as { rows?: unknown[] }
+      const rows = (result.rows ?? []) as unknown[][]
+      return ok({ tables: rows.map((row) => String(row[0] ?? '')).filter(Boolean) })
+    }
+
+    case 'meta/columns': {
+      const source = requireSource(deps, text(body.source))
+      const table = (text(body.table) ?? '').replace(/[^A-Za-z0-9_.$#\[\]]/g, '')
+      if (!table) throw new Error('db: 缺少表名')
+      const literal = table.replace(/'/g, "''")
+      const result = (await deps.query(
+        source,
+        "SELECT COLUMN_NAME AS name, DATA_TYPE AS type FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = '" + literal + "' ORDER BY ORDINAL_POSITION",
+        500,
+      )) as { rows?: unknown[] }
+      const rows = (result.rows ?? []) as unknown[][]
+      return ok({
+        table,
+        columns: rows
+          .map((row) => String(row[0] ?? ''))
+          .filter(Boolean)
+          .map((name) => ({ name: name, type: String(rows.find((r) => String(r[0]) === name)?.[1] ?? '') })),
+      })
+    }
+
     case 'sources/remove': {
       if (deps.configDriven()) {
         throw new Error('db: 当前源来自插件 config.sources，改这里不生效；请先清空 config.sources')
