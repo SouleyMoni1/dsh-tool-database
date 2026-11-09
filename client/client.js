@@ -34,6 +34,12 @@ window.__ModuleLoader__.load({
     const SECTION_ID = 'database-sources'
     /** 侧栏面板 id（main key + sidebar.panellist id 必须一致）。 */
     const VIEW_ID = 'database'
+    /** 列表「按类型分组」偏好的 localStorage key。 */
+    const GROUP_KEY = 'dsh-tool-database.group'
+    /** 连接列表宽度偏好的 localStorage key。 */
+    const SIDE_WIDTH_KEY = 'dsh-tool-database.sideWidth'
+    const SIDE_MIN = 180
+    const SIDE_MAX = 560
 
     const zh = {
       view: '数据库',
@@ -49,6 +55,9 @@ window.__ModuleLoader__.load({
       engineHintShort: 'SQL Server / PostgreSQL / MySQL · 密码只留在本机',
       configDriven: '当前连接来自插件 config.sources，本页改动不生效；先清空 config.sources。',
       engine: '引擎',
+      stage: '类型',
+      groupByStage: '按类型分组',
+      ungrouped: '不分组',
       idLabel: '别名（id）',
       idHint: '工具用 source=<别名> 指定它；字母/数字/下划线/点/连字符。',
       descLabel: '描述',
@@ -71,6 +80,9 @@ window.__ModuleLoader__.load({
       confirmRemove: '确认删除？',
       cancel: '取消',
       advanced: '高级：直接用连接字符串',
+      showPassword: '显示密码',
+      hidePassword: '隐藏密码',
+      resize: '拖动调整列表宽度',
       dsn: '连接字符串',
       dsnHint: 'sqlserver:// / postgres:// / mysql:// 账号:密码@主机:端口/库名。填了这一项就忽略上面的主机表单。',
       newTitle: '新建连接',
@@ -115,6 +127,9 @@ window.__ModuleLoader__.load({
       engineHintShort: 'SQL Server / PostgreSQL / MySQL · passwords stay local',
       configDriven: 'Connections come from the plugin config.sources; edits here have no effect until that is emptied.',
       engine: 'Engine',
+      stage: 'Type',
+      groupByStage: 'Group by type',
+      ungrouped: 'Ungrouped',
       idLabel: 'Alias (id)',
       idHint: 'Tools address it with source=<alias>; letters / digits / underscore / dot / hyphen.',
       descLabel: 'Description',
@@ -137,6 +152,9 @@ window.__ModuleLoader__.load({
       confirmRemove: 'Delete this connection?',
       cancel: 'Cancel',
       advanced: 'Advanced: use a connection string',
+      showPassword: 'Show password',
+      hidePassword: 'Hide password',
+      resize: 'Drag to resize the list',
       dsn: 'Connection string',
       dsnHint: 'sqlserver:// / postgres:// / mysql:// user:password@host:port/database. When filled, the fields above are ignored.',
       newTitle: 'New connection',
@@ -193,20 +211,39 @@ window.__ModuleLoader__.load({
         '.dbx-page{display:flex;flex-direction:column;height:100%;min-height:0;box-sizing:border-box;padding:14px 16px;gap:12px;font-size:13px;color:var(--dsw-alias-label-primary,inherit)}',
         '.dbx-page-head{display:flex;align-items:baseline;gap:10px;flex:none}',
         '.dbx-page-title{font-size:15px;font-weight:600;margin:0}',
-        '.dbx-cols{display:flex;flex:1;min-height:0;gap:14px;border-top:1px solid var(--dsw-alias-border-l2,color-mix(in srgb,currentColor 14%,transparent));padding-top:12px}',
-        '.dbx-side{width:264px;min-width:220px;display:flex;flex-direction:column;gap:8px;padding:0 10px 0 0;border-right:1px solid var(--dsw-alias-border-l2,color-mix(in srgb,currentColor 14%,transparent));min-height:0}',
+        '.dbx-cols{display:flex;flex:1;min-height:0;gap:0;border-top:1px solid var(--dsw-alias-border-l2,color-mix(in srgb,currentColor 14%,transparent));padding-top:12px}',
+        '.dbx-side{display:flex;flex-direction:column;gap:8px;padding:0 8px 0 0;min-height:0;min-width:0}',
+        '.dbx-resizer{width:6px;flex:none;align-self:stretch;margin:0 4px;border-radius:3px;cursor:col-resize;background:transparent;transition:background .12s}',
+        '.dbx-resizer:hover{background:var(--dsw-alias-border-l2,color-mix(in srgb,currentColor 16%,transparent))}',
+        '.dbx-pw{position:relative;display:block;width:100%;box-sizing:border-box}',
+        '.dbx-pw input{padding-right:30px}',
+        '.dbx-pw-btn{position:absolute;right:12px;top:50%;transform:translateY(-50%);width:24px;height:24px;display:inline-flex;align-items:center;justify-content:center;border:0;background:transparent;color:inherit;opacity:.6;cursor:pointer;padding:0;border-radius:4px}',
+        '.dbx-pw-btn:hover{opacity:1}',
         '.dbx-main{flex:1;min-width:0;display:flex;flex-direction:column;min-height:0}',
         '.dbx-side-head{display:flex;flex-direction:column;gap:6px}',
-        '.dbx-search{width:100%}',
+        '.dbx-search{width:100%;box-sizing:border-box;min-width:0}',
+        '.dbx-side-head input,.dbx-side-head select{box-sizing:border-box;max-width:100%}',
         '.dbx-list{display:flex;flex-direction:column;gap:2px;overflow:auto;min-height:0;flex:1}',
         '.dbx-item{display:flex;flex-direction:column;gap:2px;align-items:flex-start;text-align:left;padding:7px 8px;border-radius:8px;border:1px solid transparent;background:transparent;cursor:pointer;color:inherit;font:inherit;width:100%}',
         '.dbx-item:hover{background:var(--dsw-alias-bg-layer-2,color-mix(in srgb,currentColor 6%,transparent))}',
         '.dbx-item-active{background:var(--dsw-alias-bg-layer-2,color-mix(in srgb,currentColor 8%,transparent));border-color:var(--dsw-alias-border-l2,color-mix(in srgb,currentColor 18%,transparent))}',
         '.dbx-item-top{display:flex;align-items:center;gap:6px;width:100%}',
-        '.dbx-item-id{font-weight:600;font-family:var(--dsw-font-markdown-code-block,ui-monospace,monospace);font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}',
+        '.dbx-item-id{font-weight:600;font-family:var(--dsw-font-markdown-code-block,ui-monospace,monospace);font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0;flex:1}',
         '.dbx-item-sub{font-size:11px;color:var(--dsw-alias-label-tertiary,color-mix(in srgb,currentColor 55%,transparent));overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:100%}',
         '.dbx-tag{border:1px solid var(--dsw-alias-border-l3,color-mix(in srgb,currentColor 22%,transparent));border-radius:999px;padding:0 6px;font-size:10px;line-height:16px;color:var(--dsw-alias-label-tertiary,color-mix(in srgb,currentColor 55%,transparent));white-space:nowrap}',
         '.dbx-tag-write{color:var(--dsw-alias-state-success-primary,#2ea043);border-color:currentColor}',
+        '.dbx-item-tags{margin-left:auto;display:flex;align-items:center;gap:4px;flex:none}',
+        '.dbx-tag-stage{font-variant-numeric:tabular-nums}',
+        '.dbx-stage-dev{color:var(--dsw-alias-state-info-primary,#3b82f6);border-color:currentColor}',
+        '.dbx-stage-test{color:var(--dsw-alias-state-warning-primary,#b45309);border-color:currentColor}',
+        '.dbx-stage-prod{color:var(--dsw-alias-state-success-primary,#2ea043);border-color:currentColor}',
+        '.dbx-group-toggle{display:flex;align-items:center;gap:14px;font-size:12px;color:var(--dsw-alias-label-secondary,color-mix(in srgb,currentColor 72%,transparent));padding:2px 0 4px}',
+        '.dbx-radio{display:inline-flex;align-items:center;gap:5px;cursor:pointer;user-select:none}',
+        '.dbx-radio input{accent-color:var(--dsw-alias-state-accent-primary,#111);margin:0;cursor:pointer}',
+        '.dbx-group{display:flex;flex-direction:column;gap:2px}',
+        '.dbx-group-head{display:flex;align-items:center;gap:6px;font-size:11px;font-weight:600;letter-spacing:.02em;color:var(--dsw-alias-label-tertiary,color-mix(in srgb,currentColor 55%,transparent));padding:8px 2px 4px}',
+        '.dbx-group-count{font-weight:400;opacity:.7}',
+        '.dbx-group + .dbx-group{margin-top:4px}',
         '.dbx-foot{font-size:11px;color:var(--dsw-alias-label-tertiary,color-mix(in srgb,currentColor 55%,transparent));word-break:break-all;line-height:1.5}',
         '.dbx-main-head{display:flex;align-items:center;gap:8px;padding:10px 14px;border-bottom:1px solid var(--dsw-alias-border-l2,color-mix(in srgb,currentColor 14%,transparent));flex-wrap:wrap}',
         '.dbx-main-body{padding:14px;overflow:auto;flex:1;min-height:0}',
@@ -253,6 +290,7 @@ window.__ModuleLoader__.load({
         originalId: item ? item.id : '',
         id: item ? item.id : '',
         engine: engine,
+        stage: item ? item.stage : 'prod',
         description: item ? item.description : '',
         host: item ? item.host : '',
         port: item ? item.port : defaultPortOf(engines, engine),
@@ -274,6 +312,22 @@ window.__ModuleLoader__.load({
         h('span', { className: 'dbx-label' }, props.label),
         props.children,
         props.hint ? h('span', { className: 'dbx-muted' }, props.hint) : null,
+      )
+    }
+
+    /** 密码框右侧的眼睛图标：off=true 表示「已隐藏」需要划一道斜线。 */
+    function EyeIcon(props) {
+      return h(
+        'svg',
+        { width: 15, height: 15, viewBox: '0 0 16 16', fill: 'none', 'aria-hidden': 'true' },
+        h('path', {
+          d: 'M1.2 8S3.7 3.8 8 3.8 14.8 8 14.8 8 12.3 12.2 8 12.2 1.2 8 1.2 8Z',
+          stroke: 'currentColor',
+          strokeWidth: 1.2,
+          strokeLinejoin: 'round',
+        }),
+        h('circle', { cx: 8, cy: 8, r: 2.1, stroke: 'currentColor', strokeWidth: 1.2 }),
+        props.off ? h('path', { d: 'M3 13 13 3', stroke: 'currentColor', strokeWidth: 1.2, strokeLinecap: 'round' }) : null,
       )
     }
 
@@ -324,6 +378,7 @@ window.__ModuleLoader__.load({
       const note = props.note
       const showDsn = props.showDsn
       const setShowDsn = props.setShowDsn
+      const [showPassword, setShowPassword] = React.useState(false)
       const patch = (next) => setDraft((prev) => Object.assign({}, prev, next))
       const changeEngine = (nextEngine) => {
         const oldDefault = defaultPortOf(engines, draft.engine)
@@ -363,7 +418,21 @@ window.__ModuleLoader__.load({
           ),
           h(
             Field,
-            { label: t('descLabel'), wide: true },
+            { label: t('stage') },
+            h(
+              'select',
+              {
+                className: 'dbx-select',
+                value: draft.stage,
+                disabled: busy !== '',
+                onChange: (event) => patch({ stage: event.target.value }),
+              },
+              (props.stages || []).map((item) => h('option', { key: item.kind, value: item.kind }, item.label)),
+            ),
+          ),
+          h(
+            Field,
+            { label: t('descLabel') },
             h(Input, {
               value: draft.description,
               disabled: busy !== '',
@@ -414,13 +483,29 @@ window.__ModuleLoader__.load({
           h(
             Field,
             { label: t('password'), hint: t('passwordHint'), wide: true },
-            h(Input, {
-              value: draft.password,
-              type: 'password',
-              disabled: busy !== '' || showDsn,
-              placeholder: draft.hasPassword ? '******' : '',
-              onChange: (event) => patch({ password: event.target.value }),
-            }),
+            h(
+              'span',
+              { className: 'dbx-pw' },
+              h(Input, {
+                value: draft.password,
+                type: showPassword ? 'text' : 'password',
+                disabled: busy !== '' || showDsn,
+                placeholder: draft.hasPassword ? '******' : '',
+                onChange: (event) => patch({ password: event.target.value }),
+              }),
+              h(
+                'button',
+                {
+                  type: 'button',
+                  className: 'dbx-pw-btn',
+                  title: showPassword ? t('hidePassword') : t('showPassword'),
+                  'aria-label': showPassword ? t('hidePassword') : t('showPassword'),
+                  tabIndex: -1,
+                  onClick: () => setShowPassword(!showPassword),
+                },
+                showPassword ? EyeIcon({ off: true }) : EyeIcon({ off: false }),
+              ),
+            ),
           ),
           h(
             Field,
@@ -456,7 +541,17 @@ window.__ModuleLoader__.load({
         h(
           'details',
           { className: 'dbx-details', open: showDsn },
-          h('summary', { onClick: () => setShowDsn(!showDsn) }, t('advanced')),
+          h(
+            'summary',
+            {
+              onClick: (event) => {
+                // 取消浏览器默认的展开/收起，否则它会在 React 写入 open 之后再翻一次
+                event.preventDefault()
+                setShowDsn(!showDsn)
+              },
+            },
+            t('advanced'),
+          ),
           showDsn
             ? h(
                 'div',
@@ -539,6 +634,7 @@ window.__ModuleLoader__.load({
           'div',
           { className: 'dbx-main-head' },
           h('h3', { className: 'dbx-title' }, source.id),
+          h('span', { className: 'dbx-tag dbx-tag-stage dbx-stage-' + source.stage }, source.stageLabel),
           h('span', { className: 'dbx-tag' }, source.engineLabel),
           h('span', { className: 'dbx-tag' }, source.host + ':' + String(source.port)),
           source.database ? h('span', { className: 'dbx-tag' }, source.database) : null,
@@ -672,6 +768,68 @@ window.__ModuleLoader__.load({
       const [note, setNote] = React.useState(null)
       const [search, setSearch] = React.useState('')
       const [showDsn, setShowDsn] = React.useState(false)
+      const [groupByStage, setGroupByStage] = React.useState(() => {
+        try {
+          return window.localStorage.getItem(GROUP_KEY) === '1'
+        } catch (cause) {
+          return false
+        }
+      })
+      const toggleGroup = (next) => {
+        setGroupByStage(next)
+        try {
+          window.localStorage.setItem(GROUP_KEY, next ? '1' : '0')
+        } catch (cause) {
+          /* 隐私模式禁用 localStorage 时忽略 */
+        }
+      }
+      const [sideWidth, setSideWidth] = React.useState(() => {
+        try {
+          const saved = Number(window.localStorage.getItem(SIDE_WIDTH_KEY))
+          return saved >= SIDE_MIN && saved <= SIDE_MAX ? saved : 264
+        } catch (cause) {
+          return 264
+        }
+      })
+      const widthRef = React.useRef(sideWidth)
+      const dragRef = React.useRef(null)
+      widthRef.current = sideWidth
+      React.useEffect(() => {
+        const onMove = (event) => {
+          const drag = dragRef.current
+          if (!drag) return
+          const next = Math.max(SIDE_MIN, Math.min(SIDE_MAX, drag.startWidth + (event.clientX - drag.startX)))
+          drag.nextWidth = next
+          setSideWidth(next)
+        }
+        const onUp = () => {
+          const drag = dragRef.current
+          if (!drag) return
+          dragRef.current = null
+          document.body.style.userSelect = ''
+          document.body.style.cursor = ''
+          try {
+            // 用拖动过程中记下的最终值：mouseup 时最后一次 setState 可能还没渲染
+            window.localStorage.setItem(SIDE_WIDTH_KEY, String(drag.nextWidth ?? drag.startWidth))
+          } catch (cause) {
+            /* 忽略 */
+          }
+        }
+        window.addEventListener('mousemove', onMove)
+        window.addEventListener('mouseup', onUp)
+        return () => {
+          window.removeEventListener('mousemove', onMove)
+          window.removeEventListener('mouseup', onUp)
+          document.body.style.userSelect = ''
+          document.body.style.cursor = ''
+        }
+      }, [])
+      const startResize = (event) => {
+        event.preventDefault()
+        dragRef.current = { startX: event.clientX, startWidth: widthRef.current }
+        document.body.style.userSelect = 'none'
+        document.body.style.cursor = 'col-resize'
+      }
 
       const load = React.useCallback(async () => {
         setPhase('loading')
@@ -700,6 +858,18 @@ window.__ModuleLoader__.load({
               .includes(search.toLowerCase()),
           )
         : sources
+      const stages = data.stages || []
+      const byId = (left, right) => left.id.localeCompare(right.id, 'zh-Hans-CN')
+      const ordered = visible.slice().sort(byId)
+      const groups = groupByStage
+        ? stages
+            .slice()
+            .sort((left, right) => left.order - right.order)
+            .map((stage) =>
+              Object.assign({}, stage, { items: ordered.filter((item) => item.stage === stage.kind) }),
+            )
+            .filter((group) => group.items.length > 0)
+        : [{ kind: '', label: '', items: ordered }]
 
       const startNew = () => {
         setEditing(true)
@@ -731,6 +901,7 @@ window.__ModuleLoader__.load({
             source: {
               id: draft.id,
               engine: draft.engine,
+              stage: draft.stage,
               description: draft.description,
               host: showDsn ? '' : draft.host,
               port: showDsn ? '' : draft.port,
@@ -766,6 +937,7 @@ window.__ModuleLoader__.load({
             source: {
               id: draft.id,
               engine: draft.engine,
+              stage: draft.stage,
               host: showDsn ? '' : draft.host,
               port: showDsn ? '' : draft.port,
               database: showDsn ? '' : draft.database,
@@ -831,7 +1003,7 @@ window.__ModuleLoader__.load({
           { className: 'dbx-cols' },
         h(
           'aside',
-          { className: 'dbx-side' },
+          { className: 'dbx-side', style: { width: sideWidth + 'px', flex: 'none' } },
           h(
             'div',
             { className: 'dbx-side-head' },
@@ -843,38 +1015,91 @@ window.__ModuleLoader__.load({
             }),
             h(Button, { size: 'sm', variant: 'primary', onClick: startNew }, '+ ' + t('add')),
           ),
+          h(
+            'div',
+            { className: 'dbx-group-toggle' },
+            h(
+              'label',
+              { className: 'dbx-radio' },
+              h('input', {
+                type: 'radio',
+                name: 'dbx-group',
+                checked: !groupByStage,
+                onChange: () => toggleGroup(false),
+              }),
+              h('span', null, t('ungrouped')),
+            ),
+            h(
+              'label',
+              { className: 'dbx-radio' },
+              h('input', {
+                type: 'radio',
+                name: 'dbx-group',
+                checked: groupByStage,
+                onChange: () => toggleGroup(true),
+              }),
+              h('span', null, t('groupByStage')),
+            ),
+          ),
           data.configDriven ? h('div', { className: 'dbx-warn' }, t('configDriven')) : null,
           visible.length === 0
             ? h('div', { className: 'dbx-muted' }, t('empty'))
             : h(
                 'div',
                 { className: 'dbx-list' },
-                visible.map((item) =>
+                groups.map((group) =>
                   h(
-                    'button',
-                    {
-                      key: item.id,
-                      type: 'button',
-                      className: item.id === selectedId && !editing ? 'dbx-item dbx-item-active' : 'dbx-item',
-                      onClick: () => pickSource(item),
-                    },
-                    h(
-                      'span',
-                      { className: 'dbx-item-top' },
-                      h('span', { className: 'dbx-item-id' }, item.id),
-                      h('span', { className: 'dbx-tag' }, item.engineLabel),
-                      item.writable ? h('span', { className: 'dbx-tag dbx-tag-write' }, 'W') : null,
-                    ),
-                    h(
-                      'span',
-                      { className: 'dbx-item-sub' },
-                      item.host + ':' + String(item.port) + (item.database ? ' / ' + item.database : ''),
+                    'div',
+                    { key: group.kind || 'all', className: 'dbx-group' },
+                    group.kind
+                      ? h(
+                          'div',
+                          { className: 'dbx-group-head' },
+                          h('span', null, group.label),
+                          h('span', { className: 'dbx-group-count' }, String(group.items.length)),
+                        )
+                      : null,
+                    group.items.map((item) =>
+                      h(
+                        'button',
+                        {
+                          key: item.id,
+                          type: 'button',
+                          className: item.id === selectedId && !editing ? 'dbx-item dbx-item-active' : 'dbx-item',
+                          onClick: () => pickSource(item),
+                        },
+                        h(
+                          'span',
+                          { className: 'dbx-item-top' },
+                          h('span', { className: 'dbx-item-id' }, item.id),
+                          h(
+                            'span',
+                            { className: 'dbx-item-tags' },
+                            item.writable ? h('span', { className: 'dbx-tag dbx-tag-write' }, 'W') : null,
+                            h('span', { className: 'dbx-tag' }, item.engineLabel),
+                            h('span', { className: 'dbx-tag dbx-tag-stage dbx-stage-' + item.stage }, item.stageLabel),
+                          ),
+                        ),
+                        h(
+                          'span',
+                          { className: 'dbx-item-sub' },
+                          item.host + ':' + String(item.port) + (item.database ? ' / ' + item.database : ''),
+                        ),
+                      ),
                     ),
                   ),
                 ),
               ),
           h('div', { className: 'dbx-foot' }, t('file') + ': ' + (data.fileDisplay || data.file)),
         ),
+        h('div', {
+          className: 'dbx-resizer',
+          role: 'separator',
+          'aria-orientation': 'vertical',
+          'aria-label': t('resize'),
+          title: t('resize'),
+          onMouseDown: startResize,
+        }),
         h(
           'section',
           { className: 'dbx-main' },
@@ -885,6 +1110,7 @@ window.__ModuleLoader__.load({
                 setDraft: setDraft,
                 busy: busy,
                 engines: data.engines,
+                stages: data.stages,
                 note: note,
                 showDsn: showDsn,
                 setShowDsn: setShowDsn,

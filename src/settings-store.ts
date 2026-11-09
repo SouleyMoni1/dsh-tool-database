@@ -13,6 +13,7 @@ import {
   engineInfo,
   engineOf,
   parseSources,
+  stageOf,
   type ConsoleConfig,
   type SourceConfig,
 } from './core.js'
@@ -37,7 +38,7 @@ export function readSourcesFile(path: string): SourceConfig[] {
 }
 
 function toStored(source: SourceConfig): Record<string, unknown> {
-  const out: Record<string, unknown> = { id: source.id, engine: engineOf(source) }
+  const out: Record<string, unknown> = { id: source.id, engine: engineOf(source), stage: stageOf(source) }
   if (source.description) out.description = source.description
   out.host = source.host
   out.port = source.port ?? engineInfo(engineOf(source)).defaultPort

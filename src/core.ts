@@ -35,6 +35,52 @@ export const ENGINES: EngineInfo[] = [
   { kind: 'mysql', label: 'MySQL', defaultPort: 3306, schemes: ['mysql'] },
 ]
 
+/** 数据源用途分类：界面只给这三档。 */
+export type StageKind = 'dev' | 'test' | 'prod'
+
+export interface StageInfo {
+  kind: StageKind
+  label: string
+  /** 分组展示顺序。 */
+  order: number
+}
+
+export const STAGES: StageInfo[] = [
+  { kind: 'dev', label: '开发', order: 0 },
+  { kind: 'test', label: '测试', order: 1 },
+  { kind: 'prod', label: '正式', order: 2 },
+]
+
+/** 老清单没有 stage 时的缺省分类。 */
+export const DEFAULT_STAGE: StageKind = 'prod'
+
+export function stageInfo(kind: StageKind): StageInfo {
+  const found = STAGES.find((item) => item.kind === kind)
+  if (!found) throw new Error('db: 不支持的类型: ' + String(kind))
+  return found
+}
+
+export function stageOf(source: SourceConfig): StageKind {
+  return source.stage ?? DEFAULT_STAGE
+}
+
+export function stageLabel(kind: StageKind): string {
+  return stageInfo(kind).label
+}
+
+/**
+ * 老清单没写 stage 时按别名 / 描述 / 库名里的字样推断：
+ * 出现 DEV / DEVELOP 视为开发库，TEST / QA / UAT / STAGING 视为测试库，其余按正式库。
+ * 只用于读时兜底，保存时会把推断结果写回清单固定下来。
+ */
+export function inferStage(...texts: Array<string | undefined>): StageKind {
+  const hay = texts.filter((text) => Boolean(text)).join(' ').toUpperCase()
+  const word = (needle: string): boolean => new RegExp('(^|[^A-Z])' + needle + '([^A-Z]|$)').test(hay)
+  if (word('DEV') || word('DEVELOP')) return 'dev'
+  if (word('TEST') || word('QA') || word('UAT') || word('STAGING')) return 'test'
+  return 'prod'
+}
+
 export function engineInfo(kind: EngineKind): EngineInfo {
   const found = ENGINES.find((item) => item.kind === kind)
   if (!found) throw new Error('db: 不支持的引擎: ' + String(kind))
@@ -53,6 +99,8 @@ export interface SourceConfig {
   id: string
   /** 缺省 sqlserver（兼容老清单）。 */
   engine?: EngineKind
+  /** 用途分类，缺省 prod（兼容老清单）。 */
+  stage?: StageKind
   description?: string
   /** 主机名 / IP。 */
   host: string
@@ -80,6 +128,9 @@ export interface SourceConfig {
 export interface SourceView {
   id: string
   engine: EngineKind
+  /** 用途分类：dev / test / prod。 */
+  stage: StageKind
+  stageLabel: string
   description?: string
   host: string
   port: number
@@ -194,6 +245,11 @@ export function parseSources(raw: unknown): SourceConfig[] {
     if (!ENGINES.some((e) => e.kind === engine)) {
       throw new Error('db: 源 ' + id + ' 的 engine 不支持: ' + String(s.engine))
     }
+    const declared = str(s.stage)
+    const stage = (declared ?? inferStage(id, str(s.description), str(s.database), str(s.host))) as StageKind
+    if (declared !== undefined && !STAGES.some((item) => item.kind === declared)) {
+      throw new Error('db: 源 ' + id + ' 的 stage 不支持: ' + String(declared) + '（只允许 dev / test / prod）')
+    }
     const host = str(s.host) ?? str(s.server)
     if (!host) throw new Error('db: 源 ' + id + ' 缺少 host')
     const port = s.port === undefined ? engineInfo(engine).defaultPort : Number(s.port)
@@ -203,6 +259,7 @@ export function parseSources(raw: unknown): SourceConfig[] {
     return {
       id,
       engine,
+      stage,
       description: str(s.description),
       host,
       server: host,
@@ -228,9 +285,12 @@ export function parseSources(raw: unknown): SourceConfig[] {
 /** 面向模型的源视图：刻意不含 password，也不含 passwordEnv 的取值。 */
 export function describeSource(source: SourceConfig): SourceView {
   const engine = engineOf(source)
+  const stage = stageOf(source)
   return {
     id: source.id,
     engine,
+    stage,
+    stageLabel: stageLabel(stage),
     description: source.description,
     host: source.host,
     port: defaultPortOf(source),

@@ -128,6 +128,7 @@ describe('settings-store', () => {
     expect(Object.keys(JSON.parse(text)[0])).toEqual([
       'id',
       'engine',
+      'stage',
       'description',
       'host',
       'port',
@@ -138,8 +139,19 @@ describe('settings-store', () => {
     ])
     const back = readSourcesFile(file)[0] as SourceConfig
     expect(back).toMatchObject({ ...SAMPLE, server: SAMPLE.host })
+    expect(back.stage).toBe('prod')
     expect(back.port).toBe(1433)
     expect(back.writable).toBe(false)
+  })
+
+  it('stage 写回后按 dev/test/prod 原样读回', () => {
+    const file = join(scratch(), 'stages.json')
+    writeSourcesFile(file, [
+      { ...SAMPLE, id: 'a_dev', stage: 'dev' },
+      { ...SAMPLE, id: 'b_test', stage: 'test' },
+      { ...SAMPLE, id: 'c_prod', stage: 'prod' },
+    ])
+    expect(readSourcesFile(file).map((item) => item.stage)).toEqual(['dev', 'test', 'prod'])
   })
 
   it('upsert 追加 / 改名 / 撞 id 报错', () => {

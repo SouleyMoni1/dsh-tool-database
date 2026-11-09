@@ -2,7 +2,7 @@
 
 DeepSeek Harness 的**数据库原生工具插件**：一套工具同时连 **SQL Server / PostgreSQL / MySQL**，
 模型直接读（可选写）你配置的库，**不经过 MCP、不 spawn 外部进程**；左侧栏还有「数据库」面板，
-左边管连接、右边直接跑 SQL 看结果。
+左边管连接（按开发 / 测试 / 正式分类）、右边直接跑 SQL 看结果。
 
 > 前身是 `dsh-tool-mssql`（只能连 SQL Server，所以名字里带 mssql）。0.2.0 起改成多引擎，
 > 包名与工具前缀一起换成 `dsh-tool-database` / `db_*`——名字不再绑定某一种数据库。
@@ -51,16 +51,31 @@ DeepSeek Harness 的**数据库原生工具插件**：一套工具同时连 **SQ
 
 左侧栏全局面板区多一个 **数据库**（挨着「插件 / 自动化任务」），点开就是：
 
-- **左栏**：连接列表（搜索、引擎徽标、可写标记），点一条即在右侧打开；
+- **左栏**：连接列表（搜索、类型标签、引擎徽标、可写标记，宽窄可用中间分隔条左右拖动，宽度记在浏览器本地），点一条即在右侧打开；
 - **右栏 · 查询**：SQL 输入框 + 「执行」（Ctrl / Cmd + Enter），结果表格显示列名、行数、耗时，超限标「已截断」；
-- **右栏 · 连接表单**：新建 / 编辑连接用表单填（引擎、主机、端口、库、账号、密码、TLS、可写、允许 DDL），
-  「测试连接」当场试连；连接字符串收在「高级」里，不想填字段时再展开。
+- **右栏 · 连接表单**：新建 / 编辑连接用表单填（引擎、类型、主机、端口、库、账号、密码、TLS、可写、允许 DDL），
+  「测试连接」当场试连；密码框右侧的眼睛可以临时显示/隐藏密码；连接字符串收在「高级」里，不想填字段时再展开。
 
 ![左侧栏入口](docs/images/sidebar-entry.png)
 
 ![「数据库」面板：左连接列表 + 右查询区](docs/images/database-panel.png)
 
-![新建连接表单：引擎下拉切换时端口自动跟着变](docs/images/connection-form.png)
+![新建连接表单：引擎下拉切换时端口自动跟着变，密码框带眼睛](docs/images/connection-form.png)
+
+展开「高级」可以直接贴连接字符串（填了它就忽略上面的主机表单）：
+
+![高级：直接用连接字符串](docs/images/advanced-dsn.png)
+
+### 类型与分组（0.3.0）
+
+每个连接有一个**类型**，只有三档：**开发 / 测试 / 正式**（stage: dev | test | prod）。
+
+- 搜索框下面有 **不分组 / 按类型分组** 两个单选项，选择会记在浏览器本地，下次打开还是这个状态；
+- 列表每条右侧靠右排列，从右往左依次是 **类型 / 数据库（引擎）/ 可写**；默认按**别名（id）**排序，开了分组就先按类型（开发 → 测试 → 正式），组内再按别名排序，空分组不显示；
+- 老清单（没有 stage）读进来时按别名 / 描述 / 库名推断：含 DEV 记开发，含 TEST / QA / UAT / STAGING 记测试，其余记正式；
+  保存任意一条连接时，推断结果会作为 stage 写回清单固定下来，之后以清单为准。
+
+![按类型分组：开发 / 测试 / 正式，组内按别名排序](docs/images/stage-grouping.png)
 
 设置页里只留「数据库连接」一节：控制台的**写策略**与默认行数。
 
@@ -75,7 +90,7 @@ DeepSeek Harness 的**数据库原生工具插件**：一套工具同时连 **SQ
 ### Web profile
 
 ```bash
-dsh plugin --profile web add dsh-tool-database@0.2.0
+dsh plugin --profile web add dsh-tool-database@0.3.0
 ```
 
 > 建议带上显式版本号：npm 上还留着一个早期占位版本 `0.0.0-stage`（tarball 已损坏，删不掉），
@@ -87,12 +102,12 @@ dsh plugin --profile web add dsh-tool-database@0.2.0
 `profile "desktop" is managed exclusively by the Electron application`。
 桌面端要么走市场面板装 npm 上的包，要么手工做一遍 CLI 的等价操作：
 
-1. `~/.dsh/profiles/desktop/package.json` 的 `dependencies` 加 `"dsh-tool-database": "^0.2.0"`；
+1. `~/.dsh/profiles/desktop/package.json` 的 `dependencies` 加 `"dsh-tool-database": "^0.3.0"`；
 2. 同一文件的 `dsh.profile.bundles` 数组加 `"dsh-tool-database"`；
 3. 在 profile 目录里用**与该 profile 同大版本**的 pnpm 执行安装，然后重启 DSH：
    桌面 profile 当前是 pnpm `11.28.5`（store 在 `~/AppData/Local/pnpm/store/v11`），
    用 v10 会报 “node_modules was installed with a different major version of pnpm”，
-   直接 `cd ~/.dsh/profiles/desktop && npx --yes pnpm@11.28.5 add dsh-tool-database@0.2.0` 最稳。
+   直接 `cd ~/.dsh/profiles/desktop && npx --yes pnpm@11.28.5 add dsh-tool-database@0.3.0` 最稳。
 
 装完**重启 DSH**：6 个工具、侧栏面板、设置页标签都要重启后才出现（`sources.json` 的改动不用重启）。
 
@@ -151,6 +166,7 @@ dsh plugin --profile web add "link:../.local-links/dsh-tool-database"
         sources:
           - id: prod_WMS
             engine: sqlserver
+            stage: prod
             description: 【正式·只读】10.0.0.9/demo_erp
             host: 10.0.0.9
             port: 1433
@@ -160,6 +176,7 @@ dsh plugin --profile web add "link:../.local-links/dsh-tool-database"
             writable: false
           - id: pg_report
             engine: postgres
+            stage: test
             description: 【报表】pg.internal/report
             host: pg.internal
             database: report
@@ -177,6 +194,7 @@ dsh plugin --profile web add "link:../.local-links/dsh-tool-database"
   {
     "id": "prod_WMS",
     "engine": "sqlserver",
+    "stage": "prod",
     "description": "【正式·只读】10.0.0.9/demo_erp",
     "host": "10.0.0.9",
     "port": 1433,
@@ -188,6 +206,7 @@ dsh plugin --profile web add "link:../.local-links/dsh-tool-database"
   {
     "id": "mysql_shop",
     "engine": "mysql",
+    "stage": "test",
     "host": "10.0.0.9",
     "port": 3306,
     "database": "shop",
@@ -207,6 +226,7 @@ dsh plugin --profile web add "link:../.local-links/dsh-tool-database"
 | --- | --- | --- |
 | `id` | ✅ | 源句柄，模型用它在各工具里选库；清单内不可重复 |
 | `engine` | | `sqlserver`（默认）/ `postgres` / `mysql` |
+| `stage` | | 类型：`dev` 开发 / `test` 测试 / `prod` 正式（默认；不写时按别名推断，见「类型与分组」） |
 | `host` | ✅ | 主机名或 IP（老字段名 `server` 仍然认） |
 | `port` | | 默认按引擎：1433 / 5432 / 3306 |
 | `database` | | 默认库；不填则由账号默认库决定（MySQL 建议填） |

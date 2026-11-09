@@ -14,14 +14,18 @@ import { homedir } from 'node:os'
 import type { Context } from '@deepseek-ai/cordis'
 import {
   ENGINES,
+  STAGES,
   clampLimit,
   consoleConfigPath,
   engineInfo,
   engineOf,
+  stageLabel,
+  stageOf,
   type ConsoleConfig,
   type ConsoleWriteMode,
   type EngineKind,
   type SourceConfig,
+  type StageKind,
 } from './core.js'
 import { PASSWORD_SENTINEL, envNameOf, formatDsn, parseDsn } from './dsn.js'
 import { assertReadonlySql, assertWriteSql, isDdlSql, isWriteSql } from './sql-guard.js'
@@ -65,6 +69,7 @@ export interface SettingsRpcDeps {
 interface SourceInput {
   id?: unknown
   engine?: unknown
+  stage?: unknown
   description?: unknown
   host?: unknown
   port?: unknown
@@ -109,10 +114,13 @@ function bool(value: unknown): boolean {
 /** 源 → 界面视图（dsn 给列表看，dsnEdit 给编辑表单；两者都不含环境变量真实值）。 */
 function viewOf(source: SourceConfig): Record<string, unknown> {
   const engine = engineOf(source)
+  const stage = stageOf(source)
   return {
     id: source.id,
     engine,
     engineLabel: engineInfo(engine).label,
+    stage,
+    stageLabel: stageLabel(stage),
     description: source.description ?? '',
     host: source.host,
     port: source.port ?? engineInfo(engine).defaultPort,
@@ -151,6 +159,15 @@ function engineOfInput(value: unknown, fallback: EngineKind): EngineKind {
   return raw as EngineKind
 }
 
+function stageOfInput(value: unknown, fallback: StageKind): StageKind {
+  const raw = text(value)
+  if (!raw) return fallback
+  if (!STAGES.some((item) => item.kind === raw)) {
+    throw new Error('db: 不支持的类型: ' + raw + '（只允许 dev / test / prod）')
+  }
+  return raw as StageKind
+}
+
 /** 表单输入 → 源配置：结构化字段优先，填了 dsn 且没填 host 时按 dsn 解析。 */
 function buildSource(input: SourceInput, existing: SourceConfig | undefined): SourceConfig {
   const id = text(input.id)
@@ -184,6 +201,7 @@ function buildSource(input: SourceInput, existing: SourceConfig | undefined): So
   return {
     id,
     engine,
+    stage: stageOfInput(input.stage, existing ? stageOf(existing) : 'prod'),
     description: text(input.description),
     host,
     port: finalPort,
@@ -245,6 +263,7 @@ async function dispatch(deps: SettingsRpcDeps, endpoint: string, payload: unknow
         configFile: consoleConfigPath(),
         configDriven: deps.configDriven(),
         engines: ENGINES,
+        stages: STAGES,
         consoleConfig: readConsoleConfig(),
         sources: deps.list().map(viewOf),
       })

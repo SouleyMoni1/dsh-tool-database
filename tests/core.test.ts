@@ -1,8 +1,11 @@
 import { describe, expect, it } from 'vitest'
 import {
+  STAGES,
   clampLimit,
   describeSource,
   engineInfo,
+  inferStage,
+  stageLabel,
   formatColumnType,
   normalizeValue,
   parseSources,
@@ -19,6 +22,38 @@ import {
   isWriteSql,
   stripLiterals,
 } from '../src/sql-guard.ts'
+
+describe('stage（数据源类型）', () => {
+  it('只有开发 / 测试 / 正式三档', () => {
+    expect(STAGES.map((item) => item.kind)).toEqual(['dev', 'test', 'prod'])
+    expect(STAGES.map((item) => item.label)).toEqual(['开发', '测试', '正式'])
+    expect(stageLabel('dev')).toBe('开发')
+  })
+
+  it('老清单缺 stage 时按别名/描述推断，显式值透传', () => {
+    const [legacy, explicit, dev, test] = parseSources([
+      { id: 'legacy', host: 'h1', port: 1433 },
+      { id: 'devbox', engine: 'postgres', stage: 'dev', host: 'h2' },
+      { id: 'demo_scm_dev', host: 'h3' },
+      { id: 'WMS_TEST', host: 'h4', description: '测试库' },
+    ])
+    expect(legacy.stage).toBe('prod')
+    expect(explicit.stage).toBe('dev')
+    expect(dev.stage).toBe('dev')
+    expect(test.stage).toBe('test')
+    expect(describeSource(explicit)).toMatchObject({ stage: 'dev', stageLabel: '开发' })
+  })
+
+  it('推断不误伤含 TEST/DEV 字样的普通词', () => {
+    expect(inferStage('CONTEST_API', 'LATEST_ORDER')).toBe('prod')
+    expect(inferStage(undefined, '【正式】10.0.0.9/ERP')).toBe('prod')
+    expect(inferStage('shop_qa', undefined)).toBe('test')
+  })
+
+  it('非法 stage 报可读错误', () => {
+    expect(() => parseSources([{ id: 'x', stage: 'uat', host: 'h' }])).toThrow(/stage 不支持/)
+  })
+})
 
 describe('isReadonlySql', () => {
   it('allows read-only statements', () => {
