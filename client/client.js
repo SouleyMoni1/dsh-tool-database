@@ -67,6 +67,8 @@ window.__ModuleLoader__.load({
       user: '账号',
       password: '密码',
       passwordHint: '留空保持原密码；写 ${环境变量名} 表示从环境变量读取（推荐）。',
+      savedPasswordMask: '••••••',
+      savedPasswordShow: '已保存密码，留空表示不修改',
       ssl: 'TLS / SSL',
       writable: '允许写入',
       writableHint: '打开后 db_execute 才能写（仍需显式 allowWrite）。',
@@ -139,6 +141,8 @@ window.__ModuleLoader__.load({
       user: 'User',
       password: 'Password',
       passwordHint: 'Leave empty to keep the current password; use ${ENV_NAME} to read it from the environment (recommended).',
+      savedPasswordMask: '••••••',
+      savedPasswordShow: 'Password saved; leave empty to keep it',
       ssl: 'TLS / SSL',
       writable: 'Writable',
       writableHint: 'db_execute can write only when this is on (and allowWrite is explicit).',
@@ -216,8 +220,9 @@ window.__ModuleLoader__.load({
         '.dbx-resizer{width:6px;flex:none;align-self:stretch;margin:0 4px;border-radius:3px;cursor:col-resize;background:transparent;transition:background .12s}',
         '.dbx-resizer:hover{background:var(--dsw-alias-border-l2,color-mix(in srgb,currentColor 16%,transparent))}',
         '.dbx-pw{position:relative;display:block;width:100%;box-sizing:border-box}',
-        '.dbx-pw input{padding-right:30px}',
-        '.dbx-pw-btn{position:absolute;right:12px;top:50%;transform:translateY(-50%);width:24px;height:24px;display:inline-flex;align-items:center;justify-content:center;border:0;background:transparent;color:inherit;opacity:.6;cursor:pointer;padding:0;border-radius:4px}',
+        '.dbx-pw-input{width:100%;box-sizing:border-box;height:30px;border-radius:6px;border:1px solid var(--dsw-alias-border-l2,color-mix(in srgb,currentColor 18%,transparent));background:var(--dsw-alias-bg-layer-1,transparent);color:inherit;font:inherit;padding:0 32px 0 8px;outline:none}',
+        '.dbx-pw-input:focus{border-color:var(--dsw-alias-state-accent-primary,color-mix(in srgb,currentColor 45%,transparent))}',
+        '.dbx-pw-btn{position:absolute;right:6px;top:50%;transform:translateY(-50%);width:24px;height:24px;display:inline-flex;align-items:center;justify-content:center;border:0;background:transparent;color:inherit;opacity:.6;cursor:pointer;padding:0;border-radius:4px}',
         '.dbx-pw-btn:hover{opacity:1}',
         '.dbx-main{flex:1;min-width:0;display:flex;flex-direction:column;min-height:0}',
         '.dbx-side-head{display:flex;flex-direction:column;gap:6px}',
@@ -486,11 +491,17 @@ window.__ModuleLoader__.load({
             h(
               'span',
               { className: 'dbx-pw' },
-              h(Input, {
-                value: draft.password,
+              h('input', {
+                className: 'dbx-pw-input',
                 type: showPassword ? 'text' : 'password',
+                value: draft.password,
                 disabled: busy !== '' || showDsn,
-                placeholder: draft.hasPassword ? '******' : '',
+                placeholder: draft.hasPassword
+                  ? showPassword
+                    ? t('savedPasswordShow')
+                    : t('savedPasswordMask')
+                  : '',
+                autoComplete: 'new-password',
                 onChange: (event) => patch({ password: event.target.value }),
               }),
               h(
@@ -501,6 +512,8 @@ window.__ModuleLoader__.load({
                   title: showPassword ? t('hidePassword') : t('showPassword'),
                   'aria-label': showPassword ? t('hidePassword') : t('showPassword'),
                   tabIndex: -1,
+                  'aria-pressed': showPassword,
+                  onMouseDown: (event) => event.preventDefault(),
                   onClick: () => setShowPassword(!showPassword),
                 },
                 showPassword ? EyeIcon({ off: true }) : EyeIcon({ off: false }),
