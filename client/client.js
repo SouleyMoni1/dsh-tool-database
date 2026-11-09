@@ -2,7 +2,7 @@
  * dsh-tool-database 浏览器半区。
  *
  * 两个落点：
- *   1. 会话顶部标签页「数据库」（conversation.view）：左连接列表 + 右查询控制台 / 连接表单；
+ *   1. 左侧栏「数据库」面板（main + sidebar.panellist）：左连接列表 + 右查询控制台 / 连接表单；
  *   2. 设置页「数据库」节（settings.section）：控制台默认行数与写策略。
  *
  * 形态说明：DSH 客户端插件必须是单文件、且以 window.__ModuleLoader__.load({ id, factory })
@@ -32,7 +32,7 @@ window.__ModuleLoader__.load({
     const NS = 'dsh-tool-database'
     /** 设置页标签页 id。 */
     const SECTION_ID = 'database-sources'
-    /** 会话标签页 id。 */
+    /** 侧栏面板 id（main key + sidebar.panellist id 必须一致）。 */
     const VIEW_ID = 'database'
 
     const zh = {
@@ -46,6 +46,7 @@ window.__ModuleLoader__.load({
       empty: '还没有连接，点「新建连接」开始。',
       pick: '从左侧选一个连接，或新建一个。',
       engineHint: '支持 SQL Server / PostgreSQL / MySQL。连接与密码只留在本机宿主进程里，模型看到的是源句柄与查询结果，永远拿不到密码。',
+      engineHintShort: 'SQL Server / PostgreSQL / MySQL · 密码只留在本机',
       configDriven: '当前连接来自插件 config.sources，本页改动不生效；先清空 config.sources。',
       engine: '引擎',
       idLabel: '别名（id）',
@@ -94,7 +95,7 @@ window.__ModuleLoader__.load({
       consoleSaved: '已保存。',
       consoleTitle: '控制台设置',
       file: '清单文件',
-      settingsIntro: '连接管理在会话顶部的「数据库」标签页里；这里只放控制台的全局参数。',
+      settingsIntro: '连接管理在左侧栏的「数据库」面板里；这里只放控制台的全局参数。',
       wrote: '已执行',
       affected: '影响行数',
       result: '结果',
@@ -111,6 +112,7 @@ window.__ModuleLoader__.load({
       empty: 'No connection yet — start with “New connection”.',
       pick: 'Pick a connection on the left, or create one.',
       engineHint: 'Supports SQL Server / PostgreSQL / MySQL. Connections and passwords stay in the local host process; the model only sees source handles and query results.',
+      engineHintShort: 'SQL Server / PostgreSQL / MySQL · passwords stay local',
       configDriven: 'Connections come from the plugin config.sources; edits here have no effect until that is emptied.',
       engine: 'Engine',
       idLabel: 'Alias (id)',
@@ -159,7 +161,7 @@ window.__ModuleLoader__.load({
       consoleSaved: 'Saved.',
       consoleTitle: 'Console settings',
       file: 'List file',
-      settingsIntro: 'Connections live in the “Database” tab at the top of a session; this page only holds console-wide defaults.',
+      settingsIntro: 'Connections live in the “Database” panel in the left sidebar; this page only holds console-wide defaults.',
       wrote: 'Executed',
       affected: 'Rows affected',
       result: 'Result',
@@ -187,8 +189,12 @@ window.__ModuleLoader__.load({
       styled = true
       const style = document.createElement('style')
       style.textContent = [
-        '.dbx-root{display:flex;height:100%;min-height:0;box-sizing:border-box;padding-bottom:128px;font-size:13px;color:var(--dsw-alias-label-primary,inherit)}',
-        '.dbx-side{width:268px;min-width:220px;display:flex;flex-direction:column;gap:8px;padding:12px 10px;border-right:1px solid var(--dsw-alias-border-l2,color-mix(in srgb,currentColor 14%,transparent));min-height:0}',
+        '.dbx-root{display:flex;height:100%;min-height:0;box-sizing:border-box;padding:14px 16px;gap:14px;font-size:13px;color:var(--dsw-alias-label-primary,inherit)}',
+        '.dbx-page{display:flex;flex-direction:column;height:100%;min-height:0;box-sizing:border-box;padding:14px 16px;gap:12px;font-size:13px;color:var(--dsw-alias-label-primary,inherit)}',
+        '.dbx-page-head{display:flex;align-items:baseline;gap:10px;flex:none}',
+        '.dbx-page-title{font-size:15px;font-weight:600;margin:0}',
+        '.dbx-cols{display:flex;flex:1;min-height:0;gap:14px;border-top:1px solid var(--dsw-alias-border-l2,color-mix(in srgb,currentColor 14%,transparent));padding-top:12px}',
+        '.dbx-side{width:264px;min-width:220px;display:flex;flex-direction:column;gap:8px;padding:0 10px 0 0;border-right:1px solid var(--dsw-alias-border-l2,color-mix(in srgb,currentColor 14%,transparent));min-height:0}',
         '.dbx-main{flex:1;min-width:0;display:flex;flex-direction:column;min-height:0}',
         '.dbx-side-head{display:flex;flex-direction:column;gap:6px}',
         '.dbx-search{width:100%}',
@@ -813,7 +819,16 @@ window.__ModuleLoader__.load({
 
       return h(
         'div',
-        { className: 'dbx-root' },
+        { className: 'dbx-page' },
+        h(
+          'div',
+          { className: 'dbx-page-head' },
+          h('h2', { className: 'dbx-page-title' }, t('title')),
+          h('span', { className: 'dbx-muted' }, t('engineHintShort')),
+        ),
+        h(
+          'div',
+          { className: 'dbx-cols' },
         h(
           'aside',
           { className: 'dbx-side' },
@@ -900,12 +915,25 @@ window.__ModuleLoader__.load({
                   ),
                 ),
         ),
+        ),
       )
     }
 
     function View(props) {
       const t = props.t
       return h('div', { style: { height: '100%', minHeight: 0 } }, h(Panel, { t: t }))
+    }
+
+    /** 侧边栏「数据库」入口图标（侧边栏负责按钮、文字与选中态）。 */
+    function PanelIcon(props) {
+      const size = Number(props && props.size) || 16
+      return h(
+        'svg',
+        { width: size, height: size, viewBox: '0 0 16 16', fill: 'none', 'aria-hidden': 'true' },
+        h('ellipse', { cx: 8, cy: 3.6, rx: 5.2, ry: 2.2, stroke: 'currentColor', strokeWidth: 1.2 }),
+        h('path', { d: 'M2.8 3.6v4.2c0 1.2 2.3 2.2 5.2 2.2s5.2-1 5.2-2.2V3.6', stroke: 'currentColor', strokeWidth: 1.2 }),
+        h('path', { d: 'M2.8 7.8v4.2c0 1.2 2.3 2.2 5.2 2.2s5.2-1 5.2-2.2V7.8', stroke: 'currentColor', strokeWidth: 1.2 }),
+      )
     }
 
     function SettingsSection(props) {
@@ -956,20 +984,30 @@ window.__ModuleLoader__.load({
 
       ctx.effect(
         () =>
-          ctx.slots.inject('conversation.view', () =>
+          ctx.slots.inject('main', () =>
+            ctx.slots.register(
+              { name: 'main', key: VIEW_ID, locale: NS },
+              View,
+            ),
+          ),
+        'dsh-tool-database: main panel',
+      )
+
+      ctx.effect(
+        () =>
+          ctx.slots.inject('sidebar.panellist', () =>
             ctx.slots.register(
               {
-                name: 'conversation.view',
+                name: 'sidebar.panellist',
                 id: VIEW_ID,
                 order: 20,
                 label: () => t('view'),
                 locale: NS,
-                children: {},
               },
-              View,
+              PanelIcon,
             ),
           ),
-        'dsh-tool-database: session view',
+        'dsh-tool-database: sidebar entry',
       )
 
       ctx.effect(

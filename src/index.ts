@@ -8,7 +8,7 @@
  *   1. 插件 config.sources：cordis.patch.yml 里的数组；
  *   2. $DSH_HOME/database-tool/sources.json（首次启动自动从老插件 mssql-tool/sources.json 迁移一份）。
  *
- * 图形化维护：会话顶部「数据库」标签页与设置页都经 connection.fetch 打 RPC，
+ * 图形化维护：左侧栏「数据库」面板与设置页都经 connection.fetch 打 RPC，
  * 宿主侧增删改同一份 sources.json（见 settings-rpc.ts）；没有 connection 的部署
  * 自动跳过界面，工具不受影响。
  *
@@ -332,7 +332,7 @@ export function apply(ctx: Context, config: Config = {}): void {
     }),
   )
 
-  // 会话标签页 / 设置页：浏览器侧经 connection 打 RPC，宿主侧读写同一份 sources.json。
+  // 侧栏面板 / 设置页：浏览器侧经 connection 打 RPC，宿主侧读写同一份 sources.json。
   applySettingsRpc(ctx, {
     filePath: () => filePath,
     configDriven: () => Array.isArray(config.sources) && config.sources.length > 0,

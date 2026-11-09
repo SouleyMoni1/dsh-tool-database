@@ -1,7 +1,7 @@
 # dsh-tool-database
 
 DeepSeek Harness 的**数据库原生工具插件**：一套工具同时连 **SQL Server / PostgreSQL / MySQL**，
-模型直接读（可选写）你配置的库，**不经过 MCP、不 spawn 外部进程**；浏览器里还有「数据库」标签页，
+模型直接读（可选写）你配置的库，**不经过 MCP、不 spawn 外部进程**；左侧栏还有「数据库」面板，
 左边管连接、右边直接跑 SQL 看结果。
 
 > 前身是 `dsh-tool-mssql`（只能连 SQL Server，所以名字里带 mssql）。0.2.0 起改成多引擎，
@@ -47,21 +47,20 @@ DeepSeek Harness 的**数据库原生工具插件**：一套工具同时连 **SQ
 
 参数占位按引擎走：SQL Server 用 `@p0, @p1 …`；PostgreSQL 用 `$1, $2 …`；MySQL 用 `?`，值都放 `params` 数组。
 
-## 会话标签页「数据库」（0.2.0 新增）
+## 左侧栏「数据库」面板（0.2.1 起在左侧栏，0.2.0 曾在会话标签页）
 
-会话顶部标签行里多一个 **数据库**（挨着「对话 / 轨迹」），点开就是：
+左侧栏全局面板区多一个 **数据库**（挨着「插件 / 自动化任务」），点开就是：
 
 - **左栏**：连接列表（搜索、引擎徽标、可写标记），点一条即在右侧打开；
 - **右栏 · 查询**：SQL 输入框 + 「执行」（Ctrl / Cmd + Enter），结果表格显示列名、行数、耗时，超限标「已截断」；
 - **右栏 · 连接表单**：新建 / 编辑连接用表单填（引擎、主机、端口、库、账号、密码、TLS、可写、允许 DDL），
   「测试连接」当场试连；连接字符串收在「高级」里，不想填字段时再展开。
 
-![会话顶部「数据库」标签页：左连接列表 + 右查询区](docs/images/session-tab.png)
+![左侧栏入口](docs/images/sidebar-entry.png)
 
-新建 / 编辑连接走表单（下图），引擎下拉切换时端口自动跟着变（1433 / 5432 / 3306）；
-「测试连接」当场试连；连接字符串收在「高级」里，不想填字段时再展开——不用再手写 DSN。
+![「数据库」面板：左连接列表 + 右查询区](docs/images/database-panel.png)
 
-![新建连接表单](docs/images/connection-form.png)
+![新建连接表单：引擎下拉切换时端口自动跟着变](docs/images/connection-form.png)
 
 设置页里只留「数据库连接」一节：控制台的**写策略**与默认行数。
 
@@ -95,7 +94,7 @@ dsh plugin --profile web add dsh-tool-database@0.2.0
    用 v10 会报 “node_modules was installed with a different major version of pnpm”，
    直接 `cd ~/.dsh/profiles/desktop && npx --yes pnpm@11.28.5 add dsh-tool-database@0.2.0` 最稳。
 
-装完**重启 DSH**：6 个工具、会话标签页、设置页标签都要重启后才出现（`sources.json` 的改动不用重启）。
+装完**重启 DSH**：6 个工具、侧栏面板、设置页标签都要重启后才出现（`sources.json` 的改动不用重启）。
 
 ### 从 dsh-tool-mssql 升级
 
@@ -200,7 +199,7 @@ dsh plugin --profile web add "link:../.local-links/dsh-tool-database"
 ```
 
 文件按 mtime 热加载：**改完不用重启**，下一次工具调用即生效。插件启动时若清单文件不存在也不报错，只是没有可用源。
-日常维护直接用会话里的「数据库」标签页，不用手写 JSON。
+日常维护直接用左侧栏的「数据库」面板，不用手写 JSON。
 
 ### 字段
 
@@ -226,7 +225,7 @@ dsh plugin --profile web add "link:../.local-links/dsh-tool-database"
 
 ## 控制台写策略
 
-会话「数据库」标签页里跑 SQL 时，写语句受两层控制：
+侧栏「数据库」面板里跑 SQL 时，写语句受两层控制：
 
 1. **控制台写策略**（设置 → 数据库连接，或 `$DSH_HOME/database-tool/config.json` 的 `writeMode`）：
    - `source`（默认）：跟随数据源的 `writable` / `allowDdl`；
@@ -286,8 +285,8 @@ npm run check   # typecheck + vitest + tsc 构建
 - `src/dsn.ts` —— 连接字符串 ⇄ 源配置（三种 scheme + ADO 写法 + 掩码）；
 - `src/settings-store.ts` —— `sources.json` / `config.json` 的原子读写、增删改、老清单迁移；
 - `src/index.ts` —— 插件入口，注册 6 个工具；
-- `src/settings-rpc.ts` —— 标签页 / 设置页的宿主侧 RPC（`sources/*` + `query/run` + `console/save`）；
-- `client/client.js` —— 浏览器侧单文件客户端（会话标签页 + 设置页节，无构建步骤）；
+- `src/settings-rpc.ts` —— 面板 / 设置页的宿主侧 RPC（`sources/*` + `query/run` + `console/save`）；
+- `client/client.js` —— 浏览器侧单文件客户端（侧栏面板 + 设置页节，无构建步骤）；
 - `tests/` —— vitest：SQL 守卫、清单校验、连接字符串、控制台配置、迁移。
 
 ## 已知限制
