@@ -284,6 +284,14 @@ async function dispatch(deps: SettingsRpcDeps, endpoint: string, payload: unknow
       return ok({ file, sources: next.map(viewOf) })
     }
 
+    case 'sources/secret': {
+      // 只给本地面板用于「显示已保存密码」，describeSource / db_sources 工具输出始终不含密码
+      const id = text(body.id)
+      const found = deps.list().find((item) => item.id === id)
+      if (!found) throw new Error('db: 源不存在: ' + String(id ?? ''))
+      return ok({ id: found.id, secret: found.password ?? '', env: found.passwordEnv ?? '' })
+    }
+
     case 'sources/remove': {
       if (deps.configDriven()) {
         throw new Error('db: 当前源来自插件 config.sources，改这里不生效；请先清空 config.sources')

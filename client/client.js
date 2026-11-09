@@ -220,8 +220,9 @@ window.__ModuleLoader__.load({
         '.dbx-resizer{width:6px;flex:none;align-self:stretch;margin:0 4px;border-radius:3px;cursor:col-resize;background:transparent;transition:background .12s}',
         '.dbx-resizer:hover{background:var(--dsw-alias-border-l2,color-mix(in srgb,currentColor 16%,transparent))}',
         '.dbx-pw{position:relative;display:block;width:100%;box-sizing:border-box}',
-        '.dbx-pw-input{width:100%;box-sizing:border-box;height:30px;border-radius:6px;border:1px solid var(--dsw-alias-border-l2,color-mix(in srgb,currentColor 18%,transparent));background:var(--dsw-alias-bg-layer-1,transparent);color:inherit;font:inherit;padding:0 32px 0 8px;outline:none}',
-        '.dbx-pw-input:focus{border-color:var(--dsw-alias-state-accent-primary,color-mix(in srgb,currentColor 45%,transparent))}',
+        '.dbx-input,.dbx-pw-input{width:100%;box-sizing:border-box;height:30px;border-radius:6px;border:1px solid var(--dsw-alias-border-l2,color-mix(in srgb,currentColor 18%,transparent));background:var(--dsw-alias-bg-layer-1,transparent);color:inherit;font:inherit;padding:0 8px;outline:none}',
+        '.dbx-pw-input{padding:0 32px 0 8px}',
+        '.dbx-input:focus,.dbx-pw-input:focus{border-color:var(--dsw-alias-state-accent-primary,color-mix(in srgb,currentColor 45%,transparent))}',
         '.dbx-pw-btn{position:absolute;right:6px;top:50%;transform:translateY(-50%);width:24px;height:24px;display:inline-flex;align-items:center;justify-content:center;border:0;background:transparent;color:inherit;opacity:.6;cursor:pointer;padding:0;border-radius:4px}',
         '.dbx-pw-btn:hover{opacity:1}',
         '.dbx-main{flex:1;min-width:0;display:flex;flex-direction:column;min-height:0}',
@@ -271,7 +272,7 @@ window.__ModuleLoader__.load({
         '.dbx-table th,.dbx-table td{border-bottom:1px solid var(--dsw-alias-border-l1,color-mix(in srgb,currentColor 10%,transparent));padding:4px 8px;text-align:left;vertical-align:top;white-space:pre;max-width:420px;overflow:hidden;text-overflow:ellipsis}',
         '.dbx-table th{position:sticky;top:0;background:var(--dsw-alias-bg-layer-2,#fafafa);font-weight:600;z-index:1}',
         '.dbx-null{color:var(--dsw-alias-label-tertiary,color-mix(in srgb,currentColor 45%,transparent));font-style:italic}',
-        '.dbx-details{margin-top:12px;font-size:12px}',
+        '.dbx-details{margin-top:12px;font-size:12px;max-width:860px;min-width:0}',
         '.dbx-details summary{cursor:pointer;color:var(--dsw-alias-label-secondary,color-mix(in srgb,currentColor 75%,transparent))}',
         '.dbx-console{display:flex;flex-direction:column;height:100%;min-height:0}',
         '.dbx-console-body{padding:12px 14px;display:flex;flex-direction:column;gap:8px;flex:1;min-height:0;overflow:auto}',
@@ -569,7 +570,8 @@ window.__ModuleLoader__.load({
             ? h(
                 'div',
                 { className: 'dbx-field dbx-wide', style: { marginTop: '8px' } },
-                h(Input, {
+                h('input', {
+                  className: 'dbx-input',
                   value: draft.dsn,
                   disabled: busy !== '',
                   placeholder: 'sqlserver://user:password@host:1433/database',
@@ -897,6 +899,19 @@ window.__ModuleLoader__.load({
         setDraft(draftOf(item, data.engines))
         setShowDsn(false)
         setNote(null)
+        if (!item.hasPassword) return
+        // 把已保存的密码读回表单，否则眼睛对空输入框点了也没有可见变化
+        call('sources/secret', { id: item.id })
+          .then((value) => {
+            const filled = value.secret || (value.env ? '${' + value.env + '}' : '')
+            if (!filled) return
+            setDraft((prev) =>
+              prev && prev.originalId === item.id ? Object.assign({}, prev, { password: filled }) : prev,
+            )
+          })
+          .catch(() => {
+            /* 读不到就保持空，留空即不改密码 */
+          })
       }
       const pickSource = (item) => {
         setSelectedId(item.id)

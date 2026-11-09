@@ -1,6 +1,6 @@
 {
   "name": "dsh-tool-database",
-  "version": "0.3.1",
+  "version": "0.3.2",
   "description": "DeepSeek Harness database tool plugin — SQL Server / PostgreSQL / MySQL over native drivers, multi-source, read-only by default, credentials stay host-side (no MCP server in between)",
   "type": "module",
   "main": "lib/boot.js",
