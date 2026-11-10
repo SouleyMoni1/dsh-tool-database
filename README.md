@@ -78,7 +78,7 @@ DSH（DeepSeek Harness）数据库插件：一套 `db_*` 工具同时连 **SQL S
 {
   "version": 1,
   "sources": {
-    "demo_scm_dev": [
+    "local_dev": [
       { "id": "qmw94f2z6ips3", "title": "SELECT TOP 5 name FROM sys…", "sql": "SELECT TOP 5 name FROM sys.databases", "updatedAt": 1794220272601, "closed": false, "named": false }
     ]
   }
@@ -192,13 +192,13 @@ dsh plugin --profile web add "link:../.local-links/dsh-tool-database"
     - id: tool-database
       name: 'dsh-tool-database'
       config:
-        defaultSource: prod_WMS
+        defaultSource: erp_prod
         sources:
-          - id: prod_WMS
+          - id: erp_prod
             engine: sqlserver
             stage: prod
-            description: 【正式·只读】10.0.0.9/demo_erp
-            host: 10.0.0.9
+            description: 【正式·只读】db.example.com/demo_erp
+            host: db.example.com
             port: 1433
             database: demo_erp
             user: reader
@@ -222,11 +222,11 @@ dsh plugin --profile web add "link:../.local-links/dsh-tool-database"
 ```json
 [
   {
-    "id": "prod_WMS",
+    "id": "erp_prod",
     "engine": "sqlserver",
     "stage": "prod",
-    "description": "【正式·只读】10.0.0.9/demo_erp",
-    "host": "10.0.0.9",
+    "description": "【正式·只读】db.example.com/demo_erp",
+    "host": "db.example.com",
     "port": 1433,
     "database": "demo_erp",
     "user": "reader",
