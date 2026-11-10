@@ -52,7 +52,7 @@ DeepSeek Harness 的**数据库原生工具插件**：一套工具同时连 **SQ
 左侧栏全局面板区多一个 **数据库**（挨着「插件 / 自动化任务」），点开就是：
 
 - **左栏**：连接列表（搜索、类型标签、引擎徽标、可写标记，宽窄可用中间分隔条左右拖动，宽度记在浏览器本地），点一条即在右侧打开；
-- **右栏 · 查询**：SQL 编辑器（语法高亮 / 格式化 / 关键字与字段补全，见下节）+ 「执行」（Ctrl / Cmd + Enter），结果表格显示列名、行数、耗时，超限标「已截断」，右上角一键复制整表；
+- **右栏 · 查询**：多页签 SQL 编辑器（语法高亮 / 关键字与字段补全 / 页签与历史，见下节）+ 「执行」（Ctrl / Cmd + Enter），结果表格显示列名、行数、耗时，超限标「已截断」，状态行右侧一键复制整表；
 - **右栏 · 连接表单**：新建 / 编辑连接用表单填（引擎、类型、主机、端口、库、账号、密码、TLS、可写、允许 DDL），
   「测试连接」当场试连；密码框右侧的眼睛可以显示/隐藏密码（编辑已有连接时会把本机保存的密码读回框里，点眼睛就能看到原值）；连接字符串收在「高级」里，不想填字段时再展开。
 
@@ -77,16 +77,46 @@ DeepSeek Harness 的**数据库原生工具插件**：一套工具同时连 **SQ
 
 ![按类型分组：开发 / 测试 / 正式，组内按别名排序](docs/images/stage-grouping.png)
 
-### SQL 控制台（0.3.3）
+### 查询页签（0.3.4）
+
+每个连接下面可以开多个查询页签，互相独立，**页签和 SQL 都自动保存在本机**（`$DSH_HOME/database-tool/queries.json`，和 `sources.json` 放一起）：
+
+| 操作 | 说明 |
+| --- | --- |
+| `+` | 新建一个空白查询页签 |
+| 点页签 | 切到这个页签（切之前会把当前输入落盘） |
+| 页签上的 `×` | 关闭页签：**不删数据**，进「历史页签」 |
+| 历史页签 | 下拉列出关闭过的页签（标题 + SQL 前 60 字），点一条原样恢复；右侧 `×` 才是彻底删除 |
+| 双击页签标题 | 就地改名（回车确认、Esc 取消、清空恢复按 SQL 自动命名），改名后的页签不再被 SQL 首行覆盖；重命名也会存进 `queries.json`（`named: true`） |
+| 编辑器 / 结果之间的分隔条 | 上下拖动调整两块高度（90px ~ 底部留 170px），拖完记住位置（`localStorage: dbx-editor-height`），下次打开还是这个比例 |
+
+页签标题取 SQL 第一行有效内容（去掉 `--` 注释、超过 28 字截断），没写内容时显示「查询」。输入停顿 700ms 自动保存，关窗口/重启 DSH 后页签原样回来。
+
+```json
+{
+  "version": 1,
+  "sources": {
+    "demo_scm_dev": [
+      { "id": "qmw94f2z6ips3", "title": "SELECT TOP 5 name FROM sys…", "sql": "SELECT TOP 5 name FROM sys.databases", "updatedAt": 1794220272601, "closed": false, "named": false }
+    ]
+  }
+}
+```
+
+页签按连接（source id）分开存，切到别的连接看到的是它自己的页签。
+
+编辑器和结果共用一块区域，中间的分隔条可以上下拖动；结果的行数/耗时靠右、复制按钮靠左，都贴在结果表格下方。
+
+### SQL 控制台（0.3.4）
 
 输入框是「高亮层 + 透明 textarea」叠出来的，所以既有语法着色，又是原生输入（光标、选中、输入法、撤销都正常）：
 
 | 能力 | 说明 |
 | --- | --- |
 | 语法高亮 | 关键字 / 字符串 / 数字 / 注释四种颜色；两层字体度量锁死，光标与选中位置和看到的字严格对齐 |
-| 格式化 | 工具条「格式化」：`SELECT / FROM / WHERE / GROUP BY / ORDER BY` 等子句换行，关键字大写，`AND / OR` 缩进；字符串和注释原样不动 |
+
 | 补全 | 关键字 + 当前库的表名 + **当前表（`FROM / JOIN` 后面那张）的字段名**，字段排最前并标「字段」、表名标「表」；输入 1~2 个字符自动弹，`Ctrl + 空格` 强制弹，`↑ ↓` 选、`Enter / Tab` 确认、`Esc` 关闭，列表跟随光标并自动翻页；`别名.` 之后直接列该表字段 |
-| 复制 | 结果区右上角复制图标，导出 **TSV**（含表头），粘到 Excel 直接分列；工具条「复制 SQL」复制整段语句 |
+| 复制结果 | 结果表格左下角复制图标，导出 **TSV**（含表头），粘到 Excel 直接分列；行数与耗时放在右下角 |
 | 快捷键 | `Ctrl / Cmd + Enter` 执行，`Tab` 缩进两格 |
 
 结果表格高度跟随窗口剩余空间、只在自己区域内滚动，页面不会整体滚动；表头 13px 加粗淡灰底并吸顶，数据 12px。
@@ -103,7 +133,7 @@ DeepSeek Harness 的**数据库原生工具插件**：一套工具同时连 **SQ
 ### Web profile
 
 ```bash
-dsh plugin --profile web add dsh-tool-database@0.3.3
+dsh plugin --profile web add dsh-tool-database@0.3.4
 ```
 
 > 建议带上显式版本号：npm 上还留着一个早期占位版本 `0.0.0-stage`（tarball 已损坏，删不掉），
@@ -115,12 +145,12 @@ dsh plugin --profile web add dsh-tool-database@0.3.3
 `profile "desktop" is managed exclusively by the Electron application`。
 桌面端要么走市场面板装 npm 上的包，要么手工做一遍 CLI 的等价操作：
 
-1. `~/.dsh/profiles/desktop/package.json` 的 `dependencies` 加 `"dsh-tool-database": "^0.3.3"`；
+1. `~/.dsh/profiles/desktop/package.json` 的 `dependencies` 加 `"dsh-tool-database": "^0.3.4"`；
 2. 同一文件的 `dsh.profile.bundles` 数组加 `"dsh-tool-database"`；
 3. 在 profile 目录里用**与该 profile 同大版本**的 pnpm 执行安装，然后重启 DSH：
    桌面 profile 当前是 pnpm `11.28.5`（store 在 `~/AppData/Local/pnpm/store/v11`），
    用 v10 会报 “node_modules was installed with a different major version of pnpm”，
-   直接 `cd ~/.dsh/profiles/desktop && npx --yes pnpm@11.28.5 add dsh-tool-database@0.3.3` 最稳。
+   直接 `cd ~/.dsh/profiles/desktop && npx --yes pnpm@11.28.5 add dsh-tool-database@0.3.4` 最稳。
 
 装完**重启 DSH**：6 个工具、侧栏面板、设置页标签都要重启后才出现（`sources.json` 的改动不用重启）。
 
