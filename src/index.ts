@@ -30,6 +30,7 @@ import {
 import { assertReadonlySql, assertWriteSql } from './sql-guard.js'
 import { closeAllPools, listDatabases, listTables, probe, runExecute, runQuery, tableColumns } from './pool.js'
 import { migrateLegacySources } from './settings-store.js'
+import { queriesPathFor } from './query-store.js'
 import { applySettingsRpc } from './settings-rpc.js'
 
 export const name = 'dsh-tool-database'
@@ -347,6 +348,7 @@ export function apply(ctx: Context, config: Config = {}): void {
     },
     query: async (source, sql, limit) => runQuery(source, sql, undefined, limit),
     execute: async (source, sql) => runExecute(source, sql, undefined),
+    queriesPath: () => queriesPathFor(filePath),
   })
 
   // 插件卸载/重载时关闭连接池；disposer 由 cordis 在 fiber 卸载时调用。

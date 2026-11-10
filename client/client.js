@@ -94,15 +94,20 @@ window.__ModuleLoader__.load({
       testOK: '连接成功',
       query: '查询',
       sql: 'SQL',
-      sqlHint: 'Ctrl / Cmd + Enter 执行。只读连接只能 SELECT；写语句受「控制台写策略」和数据源开关双重限制。',
-      formatSql: '格式化',
-      copySql: '复制 SQL',
       copyResult: '复制结果',
       copied: '已复制',
       copyFailed: '复制失败',
-      editorHint: 'Tab 缩进，Ctrl + 空格 补全',
       columnTag: '字段',
       tableTag: '表',
+      untitledQuery: '查询',
+      newTab: '新建查询页签',
+      closeTab: '关闭页签（保留在历史里）',
+      historyLabel: '历史页签',
+      historyHint: '页签与 SQL 自动保存到本机，关掉的页签进这里',
+      historyEmpty: '还没有历史页签',
+      deleteTab: '彻底删除',
+      renameHint: '双击页签可重命名',
+      splitHint: '上下拖动调整编辑器与结果的高度',
       run: '执行',
       running: '执行中…',
       rows: '行',
@@ -176,15 +181,20 @@ window.__ModuleLoader__.load({
       testOK: 'Connected',
       query: 'Query',
       sql: 'SQL',
-      sqlHint: 'Ctrl / Cmd + Enter to run. Read-only connections can only SELECT; writes are gated by the console policy and the source switches.',
-      formatSql: 'Format',
-      copySql: 'Copy SQL',
       copyResult: 'Copy result',
       copied: 'Copied',
       copyFailed: 'Copy failed',
-      editorHint: 'Tab to indent, Ctrl + Space to complete',
       columnTag: 'column',
       tableTag: 'table',
+      untitledQuery: 'Query',
+      newTab: 'New query tab',
+      closeTab: 'Close tab (kept in history)',
+      historyLabel: 'History',
+      historyHint: 'Tabs and SQL are saved locally; closed tabs appear here',
+      historyEmpty: 'No closed tabs yet',
+      deleteTab: 'Delete permanently',
+      renameHint: 'Double-click a tab to rename',
+      splitHint: 'Drag to resize editor and result',
       run: 'Run',
       running: 'Running…',
       rows: 'rows',
@@ -281,10 +291,9 @@ window.__ModuleLoader__.load({
         '.dbx-label{font-size:12px;color:var(--dsw-alias-label-secondary,color-mix(in srgb,currentColor 75%,transparent))}',
         '.dbx-actions{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-top:14px}',
         '.dbx-select{height:30px;border-radius:6px;border:1px solid var(--dsw-alias-border-l2,color-mix(in srgb,currentColor 18%,transparent));background:var(--dsw-alias-bg-layer-1,transparent);color:inherit;font:inherit;padding:0 8px;min-width:140px}',
-        '.dbx-sql{width:100%;min-height:170px;resize:vertical;border-radius:8px;border:1px solid var(--dsw-alias-border-l2,color-mix(in srgb,currentColor 18%,transparent));background:var(--dsw-alias-bg-layer-1,transparent);color:inherit;padding:10px;font-family:var(--dsw-font-markdown-code-block,ui-monospace,SFMono-Regular,Menlo,monospace);font-size:12px;line-height:1.55;box-sizing:border-box}',
+        '.dbx-sql{width:100%;height:100%;min-height:0;resize:none;border-radius:8px;border:1px solid var(--dsw-alias-border-l2,color-mix(in srgb,currentColor 18%,transparent));background:var(--dsw-alias-bg-layer-1,transparent);color:inherit;padding:10px;font-family:var(--dsw-font-markdown-code-block,ui-monospace,SFMono-Regular,Menlo,monospace);font-size:12px;line-height:1.55;box-sizing:border-box}',
         '.dbx-editor{display:flex;flex-direction:column;gap:6px;min-width:0}',
-        '.dbx-editor-bar{display:flex;align-items:center;gap:8px;flex-wrap:wrap}',
-        '.dbx-editor-box{position:relative;width:100%;box-sizing:border-box}',
+        '.dbx-editor-box{position:relative;width:100%;box-sizing:border-box;flex:1;min-height:0}',
         '.dbx-editor-box .dbx-sql{position:relative;z-index:1;display:block;color:transparent;background:transparent;caret-color:var(--dsw-alias-label-primary,currentColor);white-space:pre-wrap;word-break:break-word;overflow:auto;scrollbar-gutter:stable;letter-spacing:normal;word-spacing:normal;font-variant-ligatures:none;text-transform:none;tab-size:4}',
         '.dbx-editor-box .dbx-sql::selection{background:color-mix(in srgb,currentColor 22%,transparent);color:var(--dsw-alias-label-primary,#1f2328);-webkit-text-fill-color:var(--dsw-alias-label-primary,#1f2328)}',
         '.dbx-hl{position:absolute;inset:0;z-index:0;margin:0;overflow:hidden;pointer-events:none;white-space:pre-wrap;word-break:break-word;border:1px solid transparent;border-radius:8px;padding:10px calc(10px + var(--dbx-gutter,0px)) 10px 10px;font-family:var(--dsw-font-markdown-code-block,ui-monospace,SFMono-Regular,Menlo,monospace);font-size:12px;line-height:1.55;box-sizing:border-box;color:var(--dsw-alias-label-primary,inherit);letter-spacing:normal;word-spacing:normal;font-variant-ligatures:none;text-transform:none;tab-size:4}',
@@ -301,8 +310,8 @@ window.__ModuleLoader__.load({
         '.dbx-result{display:flex;flex-direction:column;gap:6px;min-width:0}',
         '.dbx-result-bar{display:flex;align-items:center;justify-content:flex-end;gap:8px;padding:0 2px}',
         '.dbx-table-wrap{max-width:100%;overflow:auto}',
-        '.dbx-status{display:flex;align-items:center;gap:8px;font-size:12px;color:var(--dsw-alias-label-tertiary,color-mix(in srgb,currentColor 55%,transparent))}',
-        '.dbx-table-wrap{overflow:auto;border:1px solid var(--dsw-alias-border-l2,color-mix(in srgb,currentColor 14%,transparent));border-radius:8px;margin-top:10px;max-height:52vh}',
+        '.dbx-status{display:flex;align-items:center;justify-content:space-between;gap:8px;font-size:12px;color:var(--dsw-alias-label-tertiary,color-mix(in srgb,currentColor 55%,transparent))}',
+        '.dbx-table-wrap{overflow:auto;border:1px solid var(--dsw-alias-border-l2,color-mix(in srgb,currentColor 14%,transparent));border-radius:8px;margin-top:0;max-height:52vh}',
         '.dbx-table{border-collapse:collapse;width:100%;font-size:12px}',
         '.dbx-table th,.dbx-table td{border-bottom:1px solid var(--dsw-alias-border-l1,color-mix(in srgb,currentColor 10%,transparent));padding:4px 8px;text-align:left;vertical-align:top;white-space:pre;max-width:420px;overflow:hidden;text-overflow:ellipsis}',
         '.dbx-table th{position:sticky;top:0;background:color-mix(in srgb,currentColor 7%,Canvas);font-weight:600;font-size:13px;letter-spacing:.01em;color:var(--dsw-alias-label-primary,inherit);border-bottom:1px solid color-mix(in srgb,currentColor 22%,transparent);padding:7px 8px;z-index:1}',
@@ -310,10 +319,40 @@ window.__ModuleLoader__.load({
         '.dbx-details{margin-top:12px;font-size:12px;max-width:860px;min-width:0}',
         '.dbx-details summary{cursor:pointer;color:var(--dsw-alias-label-secondary,color-mix(in srgb,currentColor 75%,transparent))}',
         '.dbx-console{display:flex;flex-direction:column;height:100%;min-height:0;overflow:hidden}',
-        '.dbx-console-body{padding:12px 14px;display:flex;flex-direction:column;gap:8px;flex:1;min-height:0;overflow:hidden}',
-        '.dbx-editor{flex:none}',
+        '.dbx-console-body{padding:12px 14px;display:flex;flex-direction:column;gap:6px;flex:1;min-height:0;overflow:hidden}',
+        '.dbx-tabs{position:relative;display:flex;align-items:center;gap:8px;padding:0;flex-wrap:nowrap}',
+        '.dbx-tabs-track{display:flex;align-items:center;gap:6px;flex:1;min-width:0;overflow-x:auto;overflow-y:hidden;padding-bottom:2px}',
+        '.dbx-tabs-right{position:relative;flex:none;display:flex;align-items:center}',
+        '.dbx-tab{display:flex;align-items:center;gap:6px;flex:none;max-width:220px;padding:5px 8px 5px 10px;border-radius:8px;border:1px solid transparent;cursor:pointer;font-size:12px;color:var(--dsw-alias-label-secondary,color-mix(in srgb,currentColor 75%,transparent));background:color-mix(in srgb,currentColor 4%,transparent)}',
+        '.dbx-tab:hover{background:color-mix(in srgb,currentColor 8%,transparent)}',
+        '.dbx-tab-active{background:color-mix(in srgb,currentColor 12%,transparent);border-color:color-mix(in srgb,currentColor 20%,transparent);color:var(--dsw-alias-label-primary,inherit);font-weight:600}',
+        '.dbx-tab-label{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-family:var(--dsw-font-markdown-code-block,ui-monospace,SFMono-Regular,Menlo,monospace)}',
+        '.dbx-tab-close{flex:none;width:14px;height:14px;line-height:12px;text-align:center;border-radius:4px;opacity:.55;font-size:13px}',
+        '.dbx-tab-close:hover{opacity:1;background:color-mix(in srgb,currentColor 16%,transparent)}',
+        '.dbx-tab-add{flex:none;width:24px;height:24px;border-radius:6px;border:1px solid color-mix(in srgb,currentColor 18%,transparent);background:transparent;color:inherit;cursor:pointer;font-size:15px;line-height:1}',
+        '.dbx-tab-add:hover{background:color-mix(in srgb,currentColor 10%,transparent)}',
+        '.dbx-tab-hist{flex:none;height:24px;padding:0 10px;border-radius:6px;border:1px solid color-mix(in srgb,currentColor 18%,transparent);background:transparent;color:inherit;cursor:pointer;font-size:12px}',
+        '.dbx-tab-hist:hover,.dbx-tab-hist-on{background:color-mix(in srgb,currentColor 10%,transparent)}',
+        '.dbx-history{position:absolute;right:0;top:30px;z-index:20;width:340px;max-height:300px;overflow:auto;padding:6px;border-radius:10px;border:1px solid color-mix(in srgb,currentColor 20%,transparent);background:var(--dsw-alias-bg-layer-1,Canvas);box-shadow:0 10px 28px rgba(0,0,0,.18)}',
+        '.dbx-history-empty{padding:10px;font-size:12px;color:var(--dsw-alias-label-tertiary,color-mix(in srgb,currentColor 55%,transparent))}',
+        '.dbx-history-item{display:flex;align-items:flex-start;gap:6px;padding:6px 6px;border-radius:8px}',
+        '.dbx-history-item:hover{background:color-mix(in srgb,currentColor 8%,transparent)}',
+        '.dbx-history-main{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px;cursor:pointer}',
+        '.dbx-history-title{font-size:12px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}',
+        '.dbx-history-sql{font-size:11px;color:var(--dsw-alias-label-tertiary,color-mix(in srgb,currentColor 55%,transparent));overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-family:var(--dsw-font-markdown-code-block,ui-monospace,SFMono-Regular,Menlo,monospace)}',
+        '.dbx-history-del{flex:none;width:20px;height:20px;border:none;background:transparent;color:inherit;opacity:.5;cursor:pointer;border-radius:4px;font-size:13px}',
+        '.dbx-history-del:hover{opacity:1;background:color-mix(in srgb,currentColor 16%,transparent)}',
+        '.dbx-editor{display:flex;flex-direction:column;flex:1;min-height:0}',
+        '.dbx-split{display:flex;flex-direction:column;flex:1;min-height:0}',
+        '.dbx-pane-edit{display:flex;flex:none;min-height:0;overflow:hidden}',
+        '.dbx-splitter{position:relative;flex:none;height:8px;margin:0 -2px;cursor:row-resize;border-radius:6px}',
+        '.dbx-splitter::after{content:"";position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);width:46px;height:3px;border-radius:2px;background:color-mix(in srgb,currentColor 20%,transparent);transition:background .12s}',
+        '.dbx-splitter:hover::after,.dbx-splitter:active::after{background:color-mix(in srgb,currentColor 42%,transparent);width:70px}',
+        '.dbx-pane-result{display:flex;flex-direction:column;flex:1;min-height:0;gap:4px}',
+        '.dbx-tab-input{width:120px;border:none;border-bottom:1px solid color-mix(in srgb,currentColor 35%,transparent);background:transparent;color:inherit;font:inherit;padding:0 2px;outline:none}',
+        '.dbx-tabs{flex:none}',
         '.dbx-result{flex:1;min-height:0}',
-        '.dbx-table-wrap{flex:1;min-height:120px;max-height:none}',
+        '.dbx-table-wrap{flex:1;min-height:0;max-height:none}',
         '.dbx-console-body>.dbx-status,.dbx-console-body>.dbx-muted,.dbx-console-body>.dbx-error{flex:none}',
       ].join('\n')
       document.head.appendChild(style)
@@ -403,32 +442,6 @@ window.__ModuleLoader__.load({
       'FULL JOIN','CROSS JOIN','JOIN','ON','LIMIT','OFFSET','WITH',
     ]
 
-    function formatSql(text) {
-      if (!text || !text.trim()) return text
-      const pieces = text.split(/(--[^\n]*|\/\*[\s\S]*?\*\/|'(?:[^']|'')*'|"(?:[^"]|"")*")/g)
-      const formatCode = (code) => {
-        let out = code.replace(/\s+/g, ' ')
-        if (!out.trim()) return out
-        for (const clause of SQL_CLAUSES) {
-          const body = clause.replace(/ /g, '\\s+')
-          out = out.replace(new RegExp('\\s+(' + body + ')\\b', 'gi'), '\n$1')
-        }
-        for (const keyword of SQL_KEYWORDS) {
-          out = out.replace(new RegExp('\\b' + keyword + '\\b', 'gi'), (found) => found.toUpperCase())
-        }
-        out = out.replace(/\s+(AND|OR)\b/gi, '\n  $1')
-        return out
-      }
-      return pieces
-        .map((piece, index) => (index % 2 === 1 ? piece : formatCode(piece)))
-        .join('')
-        .split('\n')
-        .map((line) => line.replace(/\s+$/, ''))
-        .join('\n')
-        .replace(/\n{3,}/g, '\n\n')
-        .trim()
-    }
-
     async function copyText(text) {
       try {
         if (navigator.clipboard && navigator.clipboard.writeText) {
@@ -486,7 +499,6 @@ window.__ModuleLoader__.load({
       const hlRef = React.useRef(null)
       const [tables, setTables] = React.useState([])
       const [menu, setMenu] = React.useState(null)
-      const [toast, setToast] = React.useState('')
       const highlighted = React.useMemo(() => highlightSql(value + '\n'), [value])
       const boxRef = React.useRef(null)
       const sugRef = React.useRef(null)
@@ -667,10 +679,6 @@ window.__ModuleLoader__.load({
           }
         })
       }
-      const flash = (message) => {
-        setToast(message)
-        window.setTimeout(() => setToast(''), 1600)
-      }
       const onKeyDown = (event) => {
         const area = event.target
         if (menu) {
@@ -719,26 +727,7 @@ window.__ModuleLoader__.load({
       return h(
         'div',
         { className: 'dbx-editor' },
-        h(
-          'div',
-          { className: 'dbx-editor-bar' },
-          h(
-            Button,
-            { size: 'sm', variant: 'ghost', disabled: props.disabled, onClick: () => onChange(formatSql(value)) },
-            t('formatSql'),
-          ),
-          h(
-            Button,
-            {
-              size: 'sm',
-              variant: 'ghost',
-              onClick: async () => flash((await copyText(value)) ? t('copied') : t('copyFailed')),
-            },
-            t('copySql'),
-          ),
-          h('span', { className: 'dbx-muted' }, t('editorHint')),
-          toast ? h('span', { className: 'dbx-tag dbx-tag-write' }, toast) : null,
-        ),
+
         h(
           'div',
           { className: 'dbx-editor-box', ref: boxRef },
@@ -1079,17 +1068,207 @@ window.__ModuleLoader__.load({
     function Console(props) {
       const t = props.t
       const source = props.source
-      const [sql, setSql] = React.useState('SELECT 1')
+      const [tabs, setTabs] = React.useState([])
+      const [activeId, setActiveId] = React.useState('')
+      const [historyOpen, setHistoryOpen] = React.useState(false)
       const [running, setRunning] = React.useState(false)
       const [error, setError] = React.useState('')
       const [result, setResult] = React.useState(null)
       const [copied, setCopied] = React.useState('')
+      const [renaming, setRenaming] = React.useState('')
+      const [renameValue, setRenameValue] = React.useState('')
+      const splitRef = React.useRef(null)
+      const [editorH, setEditorH] = React.useState(() => {
+        try {
+          const saved = Number(window.localStorage.getItem('dbx-editor-height'))
+          return Number.isFinite(saved) && saved > 0 ? saved : 240
+        } catch (error) {
+          return 240
+        }
+      })
+      const saveTimer = React.useRef(0)
+      const latest = React.useRef([])
+      latest.current = tabs
+      const openTabs = tabs.filter((tab) => !tab.closed)
+      const historyTabs = tabs.filter((tab) => tab.closed).slice().sort((a, b) => b.updatedAt - a.updatedAt)
+      const activeTab = tabs.find((tab) => tab.id === activeId) || openTabs[0] || null
+      const sql = activeTab ? activeTab.sql : ''
+
+      const newId = () => 'q' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6)
+      const titleOf = (text) => {
+        const line = String(text || '')
+          .split('\n')
+          .map((row) => row.trim())
+          .find((row) => row.length > 0)
+        const cleaned = (line || '').replace(/^--\s*/, '').replace(/\s+/g, ' ')
+        if (!cleaned) return ''
+        return cleaned.length > 28 ? cleaned.slice(0, 28) + '…' : cleaned
+      }
+      const tabLabel = (tab) =>
+        tab.named && tab.title ? tab.title : titleOf(tab.sql) || t('untitledQuery')
+      const startRename = (id) => {
+        const current = latest.current.find((tab) => tab.id === id)
+        if (!current) return
+        setRenaming(id)
+        setRenameValue(tabLabel(current))
+      }
+      const commitRename = () => {
+        const id = renaming
+        setRenaming('')
+        if (!id) return
+        const current = latest.current.find((tab) => tab.id === id)
+        if (!current) return
+        const next = renameValue.trim().slice(0, 60)
+        const merged = Object.assign({}, current, {
+          title: next,
+          named: next.length > 0,
+          updatedAt: Date.now(),
+        })
+        setTabs((list) => list.map((tab) => (tab.id === id ? merged : tab)))
+        persist(merged)
+      }
+      const persist = (tab) => {
+        void call('queries/save', {
+          source: source.id,
+          tab: {
+            id: tab.id,
+            title: tab.named && tab.title ? tab.title : titleOf(tab.sql),
+            named: tab.named === true,
+            sql: tab.sql,
+            updatedAt: tab.updatedAt || Date.now(),
+            closed: tab.closed === true,
+          },
+        }).catch(() => {
+          /* 保存失败不打断输入 */
+        })
+      }
+      const flush = () => {
+        if (saveTimer.current) {
+          window.clearTimeout(saveTimer.current)
+          saveTimer.current = 0
+        }
+        const current = latest.current.find((tab) => tab.id === activeId)
+        if (current) persist(current)
+      }
+      const setSql = (value) => {
+        const current = latest.current.find((tab) => tab.id === activeId)
+        if (!current) return
+        const next = Object.assign({}, current, { sql: value, updatedAt: Date.now() })
+        setTabs((list) => list.map((tab) => (tab.id === current.id ? next : tab)))
+        if (saveTimer.current) window.clearTimeout(saveTimer.current)
+        saveTimer.current = window.setTimeout(() => persist(next), 700)
+      }
+      const newTab = () => {
+        const tab = { id: newId(), title: '', sql: '', updatedAt: Date.now(), closed: false }
+        setTabs((list) => list.concat([tab]))
+        setActiveId(tab.id)
+        setHistoryOpen(false)
+        persist(tab)
+      }
+      const closeTab = (id) => {
+        const current = latest.current.find((tab) => tab.id === id)
+        const blank = !current || !String(current.sql || '').trim()
+        if (blank) {
+          // 空白页签直接丢弃，不占历史
+          setTabs((list) => list.filter((tab) => tab.id !== id))
+          void call('queries/delete', { source: source.id, id: id }).catch(() => {})
+        } else {
+          persist(Object.assign({}, current, { closed: true, updatedAt: Date.now() }))
+          setTabs((list) => list.map((tab) => (tab.id === id ? Object.assign({}, tab, { closed: true }) : tab)))
+        }
+        if (activeId === id) {
+          const rest = latest.current.filter((tab) => !tab.closed && tab.id !== id)
+          if (rest.length > 0) setActiveId(rest[rest.length - 1].id)
+          else newTab()
+        }
+      }
+      const restoreTab = (id) => {
+        const current = latest.current.find((tab) => tab.id === id)
+        if (!current) return
+        const next = Object.assign({}, current, { closed: false, updatedAt: Date.now() })
+        setTabs((list) => list.map((tab) => (tab.id === id ? next : tab)))
+        setActiveId(id)
+        setHistoryOpen(false)
+        persist(next)
+      }
+      const removeTab = (id) => {
+        setTabs((list) => list.filter((tab) => tab.id !== id))
+        void call('queries/delete', { source: source.id, id: id }).catch(() => {})
+        if (activeId === id) {
+          const rest = latest.current.filter((tab) => !tab.closed && tab.id !== id)
+          if (rest.length > 0) setActiveId(rest[rest.length - 1].id)
+        }
+      }
+
+      React.useEffect(() => {
+        let alive = true
+        setTabs([])
+        setActiveId('')
+        setResult(null)
+        setError('')
+        setHistoryOpen(false)
+        call('queries/list', { source: source.id })
+          .then((value) => {
+            if (!alive) return
+            const list = (value && value.tabs) || []
+            const open = list.filter((tab) => !tab.closed)
+            if (open.length > 0) {
+              setTabs(list)
+              setActiveId(open[open.length - 1].id)
+            } else {
+              const first = { id: newId(), title: '', sql: 'SELECT 1', updatedAt: Date.now(), closed: false }
+              setTabs(list.concat([first]))
+              setActiveId(first.id)
+              persist(first)
+            }
+          })
+          .catch(() => {
+            if (!alive) return
+            const first = { id: newId(), title: '', sql: 'SELECT 1', updatedAt: Date.now(), closed: false }
+            setTabs([first])
+            setActiveId(first.id)
+          })
+        return () => {
+          alive = false
+        }
+      }, [source.id])
+
+      React.useEffect(() => {
+        try {
+          window.localStorage.setItem('dbx-editor-height', String(editorH))
+        } catch (error) {
+          /* 忽略：隐私模式下 localStorage 可能不可用 */
+        }
+      }, [editorH])
+      const onSplitDown = (event) => {
+        event.preventDefault()
+        const box = splitRef.current
+        if (!box) return
+        const total = box.clientHeight
+        const startY = event.clientY
+        const startH = editorH
+        const move = (moveEvent) => {
+          const next = Math.round(Math.max(90, Math.min(total - 170, startH + moveEvent.clientY - startY)))
+          setEditorH(next)
+        }
+        const up = () => {
+          window.removeEventListener('mousemove', move)
+          window.removeEventListener('mouseup', up)
+          document.body.style.cursor = ''
+          document.body.style.userSelect = ''
+        }
+        document.body.style.cursor = 'row-resize'
+        document.body.style.userSelect = 'none'
+        window.addEventListener('mousemove', move)
+        window.addEventListener('mouseup', up)
+      }
       const copyResult = async () => {
         const ok = await copyText(resultToTsv(result))
         setCopied(ok ? t('copied') : t('copyFailed'))
         window.setTimeout(() => setCopied(''), 1600)
       }
       const run = async () => {
+        flush()
         setRunning(true)
         setError('')
         try {
@@ -1100,12 +1279,6 @@ window.__ModuleLoader__.load({
           setError(messageOf(cause))
         } finally {
           setRunning(false)
-        }
-      }
-      const onKeyDown = (event) => {
-        if ((event.ctrlKey || event.metaKey) && event.key === 'Enter') {
-          event.preventDefault()
-          void run()
         }
       }
       return h(
@@ -1135,50 +1308,169 @@ window.__ModuleLoader__.load({
         h(
           'div',
           { className: 'dbx-console-body' },
-          h(SqlEditor, {
-            t: t,
-            value: sql,
-            onChange: setSql,
-            onRun: () => void run(),
-            sourceId: source.id,
-            disabled: running,
-          }),
-          h('span', { className: 'dbx-muted' }, t('sqlHint')),
-          error ? h('div', { className: 'dbx-err' }, error) : null,
-          result
-            ? h(
-                'div',
-                { className: 'dbx-status' },
+          h(
+            'div',
+            { className: 'dbx-tabs' },
+            h(
+              'div',
+              { className: 'dbx-tabs-track' },
+              openTabs.map((tab) =>
                 h(
-                  'span',
-                  null,
-                  (result.wrote
-                    ? t('wrote') + ' · ' + t('affected') + ': ' + String(result.rowsAffected || 0)
-                    : String(result.rowCount) + ' ' + t('rows')) +
-                    ' · ' +
-                    t('elapsed') +
-                    ' ' +
-                    String(result.elapsedMs) +
-                    ' ms' +
-                    (result.truncated ? ' · ' + t('truncated') : ''),
-                ),
-                result.columns && result.columns.length
-                  ? h(
-                      Button,
-                      {
-                        size: 'sm',
-                        variant: 'ghost',
-                        title: t('copyResult'),
-                        'aria-label': t('copyResult'),
-                        onClick: () => void copyResult(),
+                  'div',
+                  {
+                    key: tab.id,
+                    className: tab.id === activeId ? 'dbx-tab dbx-tab-active' : 'dbx-tab',
+                    title: t('renameHint'),
+                    onDoubleClick: () => startRename(tab.id),
+                    onMouseDown: () => {
+                      if (tab.id === activeId) return
+                      flush()
+                      setActiveId(tab.id)
+                    },
+                  },
+                  renaming === tab.id
+                    ? h('input', {
+                        className: 'dbx-tab-input',
+                        value: renameValue,
+                        autoFocus: true,
+                        onMouseDown: (event) => event.stopPropagation(),
+                        onChange: (event) => setRenameValue(event.target.value),
+                        onKeyDown: (event) => {
+                          if (event.key === 'Enter') {
+                            event.preventDefault()
+                            commitRename()
+                          } else if (event.key === 'Escape') {
+                            event.preventDefault()
+                            setRenaming('')
+                          }
+                        },
+                        onBlur: () => commitRename(),
+                      })
+                    : h('span', { className: 'dbx-tab-label' }, tabLabel(tab)),
+                  h(
+                    'span',
+                    {
+                      className: 'dbx-tab-close',
+                      title: t('closeTab'),
+                      onMouseDown: (event) => {
+                        event.stopPropagation()
+                        event.preventDefault()
+                        closeTab(tab.id)
                       },
-                      CopyIcon(),
-                    )
-                  : null,
-                copied ? h('span', { className: 'dbx-tag dbx-tag-write' }, copied) : null,
-              )
-            : null,
-          h(ResultTable, { result: result, t: t }),
+                    },
+                    '×',
+                  ),
+                ),
+              ),
+              h('button', { className: 'dbx-tab-add', title: t('newTab'), onClick: newTab }, '+'),
+            ),
+            h(
+              'div',
+              { className: 'dbx-tabs-right' },
+              h(
+                'button',
+                {
+                  className: historyOpen ? 'dbx-tab-hist dbx-tab-hist-on' : 'dbx-tab-hist',
+                  title: t('historyHint'),
+                  onClick: () => setHistoryOpen(!historyOpen),
+                },
+                t('historyLabel'),
+              ),
+              historyOpen
+                ? h(
+                    'div',
+                    { className: 'dbx-history' },
+                    historyTabs.length === 0
+                      ? h('div', { className: 'dbx-history-empty' }, t('historyEmpty'))
+                      : historyTabs.map((tab) =>
+                          h(
+                            'div',
+                            { key: tab.id, className: 'dbx-history-item' },
+                            h(
+                              'div',
+                              { className: 'dbx-history-main', onClick: () => restoreTab(tab.id) },
+                              h('span', { className: 'dbx-history-title' }, tabLabel(tab)),
+                              h(
+                                'span',
+                                { className: 'dbx-history-sql' },
+                                String(tab.sql || '').replace(/\s+/g, ' ').slice(0, 60),
+                              ),
+                            ),
+                            h(
+                              'button',
+                              {
+                                className: 'dbx-history-del',
+                                title: t('deleteTab'),
+                                onClick: (event) => {
+                                  event.stopPropagation()
+                                  removeTab(tab.id)
+                                },
+                              },
+                              '×',
+                            ),
+                          ),
+                        ),
+                  )
+                : null,
+            ),
+          ),
+          h(
+            'div',
+            { className: 'dbx-split', ref: splitRef },
+            h(
+              'div',
+              { className: 'dbx-pane-edit', style: { height: editorH + 'px' } },
+              h(SqlEditor, {
+                t: t,
+                value: sql,
+                onChange: setSql,
+                onRun: () => void run(),
+                sourceId: source.id,
+                disabled: running,
+              }),
+            ),
+            h('div', { className: 'dbx-splitter', title: t('splitHint'), onMouseDown: onSplitDown }),
+            h(
+              'div',
+              { className: 'dbx-pane-result' },
+              error ? h('div', { className: 'dbx-err' }, error) : null,
+              h(ResultTable, { result: result, t: t }),
+              result
+                ? h(
+                    'div',
+                    { className: 'dbx-status' },
+                    result.columns && result.columns.length
+                      ? h(
+                          Button,
+                          {
+                            size: 'sm',
+                            variant: 'ghost',
+                            title: t('copyResult'),
+                            'aria-label': t('copyResult'),
+                            onClick: () => void copyResult(),
+                          },
+                          CopyIcon(),
+                        )
+                      : null,
+                    copied ? h('span', { className: 'dbx-tag dbx-tag-write' }, copied) : null,
+                    h('span', { style: { flex: '1' } }),
+                    h(
+                      'span',
+                      null,
+                      (result.wrote
+                        ? t('wrote') + ' · ' + t('affected') + ': ' + String(result.rowsAffected || 0)
+                        : String(result.rowCount) + ' ' + t('rows')) +
+                        ' · ' +
+                        t('elapsed') +
+                        ' ' +
+                        String(result.elapsedMs) +
+                        ' ms' +
+                        (result.truncated ? ' · ' + t('truncated') : ''),
+                    ),
+                  )
+                : null,
+            ),
+          ),
         ),
       )
     }

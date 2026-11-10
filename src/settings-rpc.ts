@@ -8,6 +8,11 @@
  *   sources/test     试连（已保存的 id，或表单里还没保存的配置）
  *   query/run        控制台执行一条 SQL（护栏与写闸门跟模型工具一致）
  *   console/save     保存控制台配置（写策略 / 默认行数）
+ *   queries/list     某个连接下的查询页签（含已关闭的历史页签）
+ *   queries/save     新增/覆盖一条查询页签
+ *   queries/delete   彻底删除一条页签
+ *   meta/tables      当前库的表名（补全用）
+ *   meta/columns     某张表的字段名（补全用）
  */
 
 import { homedir } from 'node:os'
@@ -28,6 +33,7 @@ import {
   type StageKind,
 } from './core.js'
 import { PASSWORD_SENTINEL, envNameOf, formatDsn, parseDsn } from './dsn.js'
+import { deleteTab, listTabs, normalizeTab, saveTab } from './query-store.js'
 import { assertReadonlySql, assertWriteSql, isDdlSql, isWriteSql } from './sql-guard.js'
 import { readConsoleConfig, readSourcesFile, removeSource, upsertSource, writeConsoleConfig, writeSourcesFile } from './settings-store.js'
 
@@ -64,6 +70,8 @@ export interface SettingsRpcDeps {
   query: (source: SourceConfig, sql: string, limit: number) => Promise<unknown>
   /** 控制台写执行。 */
   execute: (source: SourceConfig, sql: string) => Promise<unknown>
+  /** 查询页签文件 queries.json 的路径。 */
+  queriesPath: () => string
 }
 
 interface SourceInput {
@@ -290,6 +298,25 @@ async function dispatch(deps: SettingsRpcDeps, endpoint: string, payload: unknow
       const found = deps.list().find((item) => item.id === id)
       if (!found) throw new Error('db: 源不存在: ' + String(id ?? ''))
       return ok({ id: found.id, secret: found.password ?? '', env: found.passwordEnv ?? '' })
+    }
+
+    case 'queries/list': {
+      const source = requireSource(deps, text(body.source))
+      return ok({ tabs: listTabs(deps.queriesPath(), source.id) })
+    }
+
+    case 'queries/save': {
+      const source = requireSource(deps, text(body.source))
+      const tab = normalizeTab(body.tab)
+      if (!tab) throw new Error('db: 页签数据不合法')
+      return ok({ tab: saveTab(deps.queriesPath(), source.id, tab) })
+    }
+
+    case 'queries/delete': {
+      const source = requireSource(deps, text(body.source))
+      const id = text(body.id)
+      if (!id) throw new Error('db: 缺少页签 id')
+      return ok({ removed: deleteTab(deps.queriesPath(), source.id, id) })
     }
 
     case 'meta/tables': {
