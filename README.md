@@ -40,7 +40,7 @@ DeepSeek Harness 的**数据库原生工具插件**：一套工具同时连 **SQ
 | `db_databases` | 列出该实例上的数据库（SQL Server `sys.databases` / PostgreSQL `pg_database` / MySQL `SHOW DATABASES`） |
 | `db_tables` | 列出表与视图（schema / 类型 / 行数估算），支持 `schema` / `filter` 过滤 |
 | `db_schema` | 单表列结构：类型（带长度精度）/ 可空 / 自增 / 主键 / 默认值 |
-| `db_query` | **只读**查询，单条语句，参数绑定，返回 `{ columns, rows, truncated, rowCount, elapsedMs }` |
+| `db_query` | **只读**查询，支持多条语句（逐条执行、各自成一个结果集），参数绑定只对单条生效；`page` + `limit` 控制翻页（`limit` = 每页行数），返回 `{ statements: [{ columns, rows, page, pageSize, hasNext, paged, elapsedMs }] }` |
 | `db_execute` | **写**通道，需源开启 `writable` **且**显式 `allowWrite: true`；DDL 另需 `allowDdl` |
 
 > 省 token 工作流：`db_sources` → `db_tables filter:` → `db_schema` → `db_query`。先看结构再取数，避免 `SELECT *` 全表灌进上下文。
@@ -77,7 +77,7 @@ DeepSeek Harness 的**数据库原生工具插件**：一套工具同时连 **SQ
 
 ![按类型分组：开发 / 测试 / 正式，组内按别名排序](docs/images/stage-grouping.png)
 
-### 查询页签（0.3.4）
+### 查询页签（0.3.4 起）
 
 每个连接下面可以开多个查询页签，互相独立，**页签和 SQL 都自动保存在本机**（`$DSH_HOME/database-tool/queries.json`，和 `sources.json` 放一起）：
 
@@ -107,7 +107,7 @@ DeepSeek Harness 的**数据库原生工具插件**：一套工具同时连 **SQ
 
 编辑器和结果共用一块区域，中间的分隔条可以上下拖动；结果的行数/耗时靠右、复制按钮靠左，都贴在结果表格下方。
 
-### SQL 控制台（0.3.4）
+### SQL 控制台（0.3.4 起，0.3.5 加多语句 / 分页 / 序号 / 列宽 / 执行选中）
 
 输入框是「高亮层 + 透明 textarea」叠出来的，所以既有语法着色，又是原生输入（光标、选中、输入法、撤销都正常）：
 
@@ -117,7 +117,12 @@ DeepSeek Harness 的**数据库原生工具插件**：一套工具同时连 **SQ
 
 | 补全 | 关键字 + 当前库的表名 + **当前表（`FROM / JOIN` 后面那张）的字段名**，字段排最前并标「字段」、表名标「表」；输入 1~2 个字符自动弹，`Ctrl + 空格` 强制弹，`↑ ↓` 选、`Enter / Tab` 确认、`Esc` 关闭，列表跟随光标并自动翻页；`别名.` 之后直接列该表字段 |
 | 复制结果 | 结果表格左下角复制图标，导出 **TSV**（含表头），粘到 Excel 直接分列；行数与耗时放在右下角 |
-| 快捷键 | `Ctrl / Cmd + Enter` 执行，`Tab` 缩进两格 |
+| 多语句 | 一个输入框里写多条语句，按顺序逐条执行，每条一个结果集；**没写分号也能识别**（换行后以 SELECT/UPDATE/INSERT/… 开头即视为新语句，`;` 和单独一行 `GO` 同样支持）；结果区上方出现「结果 1 / 结果 2 / 执行 3」切换条，查询和写可混在一个脚本里 |
+| 行号 | 结果表第一列固定是 `#` 序号（跟着翻页连续编号：第 2 页从 101 开始），列宽压到 34px；复制 TSV 也带这一列 |
+| 列宽 | 表头右侧边缘可左右拖动调列宽，`#` 列不参与；同样几列的结果重跑会沿用上次拖出来的宽度（刷新页面重置），列总宽超出时表格横向滚动 |
+| 分页 | 结果不再截断：默认每页 100 行；`上一页 / 下一页`、`第 N 页 · 行数 · 耗时`、`50/100/200/500 行/页` 都在结果区右下角同一行；翻页由引擎自己拼 `OFFSET/FETCH`（PostgreSQL / MySQL 拼 `LIMIT/OFFSET`），不会把整表拉回内存 |
+| 执行选中 | 在编辑器里选中一段 SQL，右上角按钮变成「执行已选择」，只跑选中的那一段（`Ctrl / Cmd + Enter` 同样只跑选中）；取消选中又变回「执行」 |
+| 快捷键 | `Ctrl / Cmd + Enter` 执行（有选中就只跑选中），`Tab` 缩进两格 |
 
 结果表格高度跟随窗口剩余空间、只在自己区域内滚动，页面不会整体滚动；表头 13px 加粗淡灰底并吸顶，数据 12px。
 设置页里只留「数据库连接」一节：控制台的**写策略**与默认行数。
@@ -133,7 +138,7 @@ DeepSeek Harness 的**数据库原生工具插件**：一套工具同时连 **SQ
 ### Web profile
 
 ```bash
-dsh plugin --profile web add dsh-tool-database@0.3.4
+dsh plugin --profile web add dsh-tool-database@0.3.5
 ```
 
 > 建议带上显式版本号：npm 上还留着一个早期占位版本 `0.0.0-stage`（tarball 已损坏，删不掉），
@@ -145,12 +150,12 @@ dsh plugin --profile web add dsh-tool-database@0.3.4
 `profile "desktop" is managed exclusively by the Electron application`。
 桌面端要么走市场面板装 npm 上的包，要么手工做一遍 CLI 的等价操作：
 
-1. `~/.dsh/profiles/desktop/package.json` 的 `dependencies` 加 `"dsh-tool-database": "^0.3.4"`；
+1. `~/.dsh/profiles/desktop/package.json` 的 `dependencies` 加 `"dsh-tool-database": "^0.3.5"`；
 2. 同一文件的 `dsh.profile.bundles` 数组加 `"dsh-tool-database"`；
 3. 在 profile 目录里用**与该 profile 同大版本**的 pnpm 执行安装，然后重启 DSH：
    桌面 profile 当前是 pnpm `11.28.5`（store 在 `~/AppData/Local/pnpm/store/v11`），
    用 v10 会报 “node_modules was installed with a different major version of pnpm”，
-   直接 `cd ~/.dsh/profiles/desktop && npx --yes pnpm@11.28.5 add dsh-tool-database@0.3.4` 最稳。
+   直接 `cd ~/.dsh/profiles/desktop && npx --yes pnpm@11.28.5 add dsh-tool-database@0.3.5` 最稳。
 
 装完**重启 DSH**：6 个工具、侧栏面板、设置页标签都要重启后才出现（`sources.json` 的改动不用重启）。
 
@@ -278,7 +283,7 @@ dsh plugin --profile web add "link:../.local-links/dsh-tool-database"
 | `password` | | 备选：明文写在配置里（仍只在宿主侧，但会落盘） |
 | `writable` | | 默认 `false`。只有 `true` 才允许 `db_execute` |
 | `allowDdl` | | 默认 `false`。允许 `CREATE/ALTER/DROP/TRUNCATE` |
-| `allowBatch` | | 默认 `false`。写通道允许分号分隔的批量语句 |
+| `allowBatch` | | 默认 `true`。写通道允许分号分隔的批量语句；显式 `false` 锁成单条 |
 | `ssl` | | 默认 `false`。PostgreSQL / MySQL 走 TLS；SQL Server 等价于 `encrypt` |
 | `encrypt` | | SQL Server 专用；`ssl: true` 会一起打开 |
 | `trustServerCertificate` | | 默认 `true`；云库用自签证书时保留 `true` |
@@ -304,7 +309,7 @@ dsh plugin --profile web add "link:../.local-links/dsh-tool-database"
 - **只读白名单**：只读通道仅放行以 `SELECT` / `WITH` / `VALUES` 开头的语句；
 - **危险词拦截**：`SELECT ... INTO`、`EXEC`、`OPENROWSET`、`DBCC`、`WAITFOR`、DDL/DML 关键字直接拒绝
   （判定前先剥离字符串、注释与 `[]` / `""` / 反引号标识符，不会误伤字面量里的关键字）；
-- **单语句**：只读通道出现分号分隔的多语句即拒绝；
+- **逐条校验**：`;` 分隔的多条语句会先逐条过白名单 / 禁词 / 类别判定，任意一条不合规整段拒绝（不会只看第一条）；查询和写可以混在一个脚本里，写语句照样受 `writable` / `writeMode` / `allowDdl` 约束；
 - **写通道双闸门**：源必须 `writable: true`，调用方还要显式 `allowWrite: true`；DDL 另需源开启 `allowDdl`；
   `xp_*` / `OPENROWSET` / `BACKUP` / `GRANT` 等提权关键字一律拒绝；
 - **参数绑定**：`db_query` / `db_execute` 用引擎各自的占位符 + `params` 数组绑定，不做字符串拼接；
@@ -354,7 +359,10 @@ npm run check   # typecheck + vitest + tsc 构建
 
 ## 已知限制
 
-- **写通道默认单条语句**：需要批量脚本时给源开 `allowBatch: true`；
+- **批量写不开事务**：多条写语句按顺序逐条提交，中途报错前面的不会回滚（需要原子性请自己包 `BEGIN TRAN / COMMIT`）；
+- **无分号切分是启发式**：按「行首语句关键字」判断新语句，括号未闭合 / 上一行以逗号、运算符、`UNION` 结尾时不会切；复杂脚本建议写 `;`；
+- **TOP / DISTINCT / UNION 不能翻页**：这几种语句拼不了 `OFFSET`，只显示当前页并提示原因，加 `WHERE` 或改写后再取；
+- **翻页顺序**：语句本身没写 `ORDER BY` 时补的是 `ORDER BY (SELECT NULL)`，只保证取到不同行，不保证跨页稳定顺序，介意就自己写 `ORDER BY`；
 - 元数据查询依赖各引擎的系统目录视图，账号若无元数据可见性权限会返回空列表；
 - 连接池按「引擎 + 源 id + 主机 + 端口 + 库 + 账号」缓存，改这几项后要重启 DSH 才换池
   （改 `sources.json` 的密码/开关不影响已建立的池）；
