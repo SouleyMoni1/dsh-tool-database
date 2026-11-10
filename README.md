@@ -1,15 +1,7 @@
 # dsh-tool-database
 
-DeepSeek Harness 的**数据库原生工具插件**：一套工具同时连 **SQL Server / PostgreSQL / MySQL**，
-模型直接读（可选写）你配置的库，**不经过 MCP、不 spawn 外部进程**；左侧栏还有「数据库」面板，
-左边管连接（按开发 / 测试 / 正式分类）、右边直接跑 SQL 看结果。
-
-> 前身是 `dsh-tool-mssql`（只能连 SQL Server，所以名字里带 mssql）。0.2.0 起改成多引擎，
-> 包名与工具前缀一起换成 `dsh-tool-database` / `db_*`——名字不再绑定某一种数据库。
->
-> 骨架来自 [WODE25500/dsh-tool-sqlite](https://github.com/WODE25500/dsh-tool-sqlite)：去掉 SQLite 工作区语义，
-> 换成官方驱动 + 多数据源 + 凭据边界。定位是**替代 dbhub 这类 MCP 那一层**：连接与凭据留在宿主侧，
-> 模型只看到源句柄与数据。
+DSH（DeepSeek Harness）数据库插件：一套 `db_*` 工具同时连 **SQL Server / PostgreSQL / MySQL**，
+模型直接读（可选写）你配置的库，不经过 MCP、不起子进程；左侧栏「数据库」面板负责管连接、跑 SQL、看结果。
 
 ## 支持的引擎
 
@@ -21,16 +13,6 @@ DeepSeek Harness 的**数据库原生工具插件**：一套工具同时连 **SQ
 
 每个源独立选引擎；同一个插件里可以同时放 SQL Server 生产库、PostgreSQL 报表库、MySQL 业务库。
 
-## 相比 dbhub MCP 的差异
-
-| | dbhub MCP | 本插件 |
-| --- | --- | --- |
-| 运行形态 | 宿主 spawn 一个子进程，stdio 通信 | 进程内 host 插件，无子进程 |
-| 启动依赖 | 首次可能要 `npx` 联网解析包；代理挂了会反复重连直到工具被注销 | 纯本地依赖，无网络解析 |
-| 凭据位置 | 明文写在 `dbhub.toml` 的 DSN 里 | `passwordEnv` 环境变量优先；模型永远看不到密码 |
-| 支持的库 | 多种（各自配置） | SQL Server / PostgreSQL / MySQL |
-| 工具数量 | 每个源 × 每个 tool 一组 | 恒定 6 个，源再多也不膨胀上下文 |
-| 只读护栏 | 靠 `[[tools]] readonly` 关键字过滤 | 语句白名单 + 单语句判定 + 写通道双闸门 |
 
 ## 注册工具
 
@@ -317,16 +299,6 @@ dsh plugin --profile web add "link:../.local-links/dsh-tool-database"
 - **凭据边界**：`db_sources` 只输出「是否已配密码」，不含密码、不含 `passwordEnv` 的取值、不含完整连接串；
   设置页列表里的 DSN 恒为 `******`，只有本机同源、经 DSH 会话鉴权的编辑表单才拿得到明文回填。
 
-## 从 dbhub 迁移
-
-1. 把 `~/.dsh/mcp-servers/dbhub.toml` 里每个 `[[sources]]` 转成一条 `sources.json`：
-   `dsn` 里的 `user:password@host:port/database` 拆成 `user` / `passwordEnv`（或 `password`）/ `host` / `port` / `database`，
-   按协议补 `engine`；
-2. 正式库保留 `writable: false`，开发/测试库按原来的策略设 `writable: true`；
-3. **删掉** profile 的 `cordis.patch.yml` 里的 `mcp-dbhub` 条目（否则两套工具并存）；
-4. 重启 DSH，用 `db_sources probe: true` 验证连通。
-
-工具名对照：`execute_sql` → `db_query`（读）/ `db_execute`（写）；`search_objects` → `db_tables` + `db_schema`。
 
 ## 使用示例
 
@@ -370,4 +342,4 @@ npm run check   # typecheck + vitest + tsc 构建
 
 ## 许可
 
-MIT（继承上游 dsh-tool-sqlite 的 MIT 许可）。
+MIT
