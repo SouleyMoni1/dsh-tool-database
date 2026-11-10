@@ -107,8 +107,21 @@ window.__ModuleLoader__.load({
       historyEmpty: '还没有历史页签',
       deleteTab: '彻底删除',
       renameHint: '双击页签可重命名',
+      resultTag: '结果',
+      execTag: '执行',
+      statementFailed: '第 {n} 条语句失败',
+      prevPage: '上一页',
+      nextPage: '下一页',
+      pageOf: '第 {n} 页',
+      rowsPerPage: '行/页',
+      noPaging: '该语句无法翻页（TOP / DISTINCT / UNION），加 WHERE 或改写后再看全部',
       splitHint: '上下拖动调整编辑器与结果的高度',
       run: '执行',
+      runSelected: '执行已选择',
+      runHint: '执行全部（Ctrl / Cmd + Enter）',
+      runSelectedHint: '只执行选中的 SQL（Ctrl / Cmd + Enter）',
+      rowNo: '#',
+      resizeHint: '拖动调整列宽',
       running: '执行中…',
       rows: '行',
       elapsed: '耗时',
@@ -194,8 +207,21 @@ window.__ModuleLoader__.load({
       historyEmpty: 'No closed tabs yet',
       deleteTab: 'Delete permanently',
       renameHint: 'Double-click a tab to rename',
+      resultTag: 'Result',
+      execTag: 'Exec',
+      statementFailed: 'Statement {n} failed',
+      prevPage: 'Prev',
+      nextPage: 'Next',
+      pageOf: 'Page {n}',
+      rowsPerPage: 'rows/page',
+      noPaging: 'This statement cannot be paged (TOP / DISTINCT / UNION); narrow it with WHERE',
       splitHint: 'Drag to resize editor and result',
       run: 'Run',
+      runSelected: 'Run selection',
+      runHint: 'Run whole script (Ctrl / Cmd + Enter)',
+      runSelectedHint: 'Run only selected SQL (Ctrl / Cmd + Enter)',
+      rowNo: '#',
+      resizeHint: 'Drag to resize column',
       running: 'Running…',
       rows: 'rows',
       elapsed: 'took',
@@ -349,6 +375,21 @@ window.__ModuleLoader__.load({
         '.dbx-splitter::after{content:"";position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);width:46px;height:3px;border-radius:2px;background:color-mix(in srgb,currentColor 20%,transparent);transition:background .12s}',
         '.dbx-splitter:hover::after,.dbx-splitter:active::after{background:color-mix(in srgb,currentColor 42%,transparent);width:70px}',
         '.dbx-pane-result{display:flex;flex-direction:column;flex:1;min-height:0;gap:4px}',
+        '.dbx-rs-tabs{display:flex;align-items:center;gap:6px;flex:none;overflow-x:auto;padding:0 0 2px}',
+        '.dbx-rs-tab{flex:none;height:24px;padding:0 10px;border-radius:6px;border:1px solid color-mix(in srgb,currentColor 18%,transparent);background:transparent;color:inherit;cursor:pointer;font-size:12px}',
+        '.dbx-rs-tab:hover{background:color-mix(in srgb,currentColor 10%,transparent)}',
+        '.dbx-rs-tab-active{background:color-mix(in srgb,currentColor 14%,transparent);border-color:color-mix(in srgb,currentColor 30%,transparent);font-weight:600}',
+        '.dbx-status-right{display:flex;align-items:center;gap:8px;flex:none}',
+        '.dbx-status-text{white-space:nowrap}',
+        '.dbx-table th.dbx-col-no,.dbx-table td.dbx-col-no{width:34px;min-width:34px;max-width:34px;padding-left:4px;padding-right:4px;text-align:right;color:var(--dsw-alias-label-tertiary,color-mix(in srgb,currentColor 45%,transparent));font-variant-numeric:tabular-nums}',
+        '.dbx-table-fixed{table-layout:fixed}',
+        '.dbx-col-resize{position:absolute;top:0;right:-4px;width:8px;height:100%;cursor:col-resize;z-index:2}',
+        '.dbx-col-resize:hover{background:color-mix(in srgb,currentColor 20%,transparent)}',
+        '.dbx-pg-btn{height:24px;padding:0 10px;border-radius:6px;border:1px solid color-mix(in srgb,currentColor 18%,transparent);background:transparent;color:inherit;cursor:pointer;font-size:12px}',
+        '.dbx-pg-btn:hover:not(:disabled){background:color-mix(in srgb,currentColor 10%,transparent)}',
+        '.dbx-pg-btn:disabled{opacity:.4;cursor:default}',
+        '.dbx-pg-info{color:var(--dsw-alias-label-tertiary,color-mix(in srgb,currentColor 55%,transparent))}',
+        '.dbx-pg-size{height:24px;border-radius:6px;border:1px solid color-mix(in srgb,currentColor 18%,transparent);background:transparent;color:inherit;font-size:12px;padding:0 4px}',
         '.dbx-tab-input{width:120px;border:none;border-bottom:1px solid color-mix(in srgb,currentColor 35%,transparent);background:transparent;color:inherit;font:inherit;padding:0 2px;outline:none}',
         '.dbx-tabs{flex:none}',
         '.dbx-result{flex:1;min-height:0}',
@@ -473,8 +514,11 @@ window.__ModuleLoader__.load({
         const text = typeof value === 'string' ? value : JSON.stringify(value)
         return String(text).replace(/\t/g, ' ').replace(/\r?\n/g, ' ')
       }
-      const lines = [result.columns.join('\t')]
-      for (const row of result.rows || []) lines.push(row.map(cell).join('\t'))
+      const start = result.paged ? ((result.page || 1) - 1) * (result.pageSize || 0) + 1 : 1
+      const lines = ['#\t' + result.columns.join('\t')]
+      ;(result.rows || []).forEach((row, index) => {
+        lines.push(String(start + index) + '\t' + row.map(cell).join('\t'))
+      })
       return lines.join('\n')
     }
     function CopyIcon() {
@@ -715,7 +759,7 @@ window.__ModuleLoader__.load({
         if ((event.ctrlKey || event.metaKey) && event.key === 'Enter') {
           event.preventDefault()
           setMenu(null)
-          props.onRun()
+          props.onRun(value.slice(area.selectionStart, area.selectionEnd))
         }
       }
       const syncScroll = (event) => {
@@ -739,6 +783,18 @@ window.__ModuleLoader__.load({
             spellCheck: false,
             placeholder: 'SELECT TOP 10 * FROM ...',
             onKeyDown: onKeyDown,
+            onSelect: (event) => {
+              const area = event.target
+              if (props.onSelectionChange) {
+                props.onSelectionChange(area.value.slice(area.selectionStart, area.selectionEnd))
+              }
+            },
+            onKeyUp: (event) => {
+              const area = event.target
+              if (props.onSelectionChange) {
+                props.onSelectionChange(area.value.slice(area.selectionStart, area.selectionEnd))
+              }
+            },
             onScroll: syncScroll,
             onChange: (event) => {
               onChange(event.target.value)
@@ -782,16 +838,64 @@ window.__ModuleLoader__.load({
         ),
       )
     }
+    // 列宽缓存：同一个结果列组合重跑时沿用上次拖出来的宽度
+    const columnWidths = new Map()
     const ResultTable = React.memo(function ResultTable(props) {
       const result = props.result
+      const t = props.t
+      const columns = result && result.columns ? result.columns : []
+      const signature = columns.join('\u0001')
+      const tableRef = React.useRef(null)
+      const colRefs = React.useRef([])
+      const cached = React.useMemo(() => {
+        const found = columnWidths.get(signature)
+        return found && found.length === columns.length + 1 ? found.slice() : null
+      }, [signature, columns.length])
+      const applyWidths = (list) => {
+        const table = tableRef.current
+        if (!table) return
+        list.forEach((width, index) => {
+          const col = colRefs.current[index]
+          if (col) col.style.width = width + 'px'
+        })
+        table.style.width = list.reduce((sum, width) => sum + width, 0) + 'px'
+      }
+      const startResize = (index, event) => {
+        event.preventDefault()
+        event.stopPropagation()
+        const table = tableRef.current
+        if (!table) return
+        const widths = [].slice.call(table.querySelectorAll('thead th')).map(function (th) {
+          return th.offsetWidth
+        })
+        const startX = event.clientX
+        const startWidth = widths[index]
+        const move = (moveEvent) => {
+          widths[index] = Math.max(40, Math.round(startWidth + moveEvent.clientX - startX))
+          applyWidths(widths)
+        }
+        const up = () => {
+          window.removeEventListener('mousemove', move)
+          window.removeEventListener('mouseup', up)
+          document.body.style.cursor = ''
+          document.body.style.userSelect = ''
+          columnWidths.set(signature, widths.slice())
+        }
+        document.body.style.cursor = 'col-resize'
+        document.body.style.userSelect = 'none'
+        window.addEventListener('mousemove', move)
+        window.addEventListener('mouseup', up)
+      }
       if (!result) return null
-      if (!result.columns || result.columns.length === 0) {
+      if (columns.length === 0) {
         return h(
           'div',
           { className: 'dbx-muted' },
-          props.t('wrote') + ' · ' + props.t('affected') + ': ' + String(result.rowsAffected == null ? 0 : result.rowsAffected),
+          t('wrote') + ' · ' + t('affected') + ': ' + String(result.rowsAffected == null ? 0 : result.rowsAffected),
         )
       }
+      const rowStart = result.paged ? ((result.page || 1) - 1) * (result.pageSize || 0) + 1 : 1
+      const totalWidth = cached ? cached.reduce((sum, width) => sum + width, 0) : 0
       return h(
         'div',
         { className: 'dbx-result' },
@@ -800,25 +904,65 @@ window.__ModuleLoader__.load({
           { className: 'dbx-table-wrap' },
           h(
             'table',
-          { className: 'dbx-table' },
-          h('thead', null, h('tr', null, result.columns.map((col) => h('th', { key: col }, col)))),
-          h(
-            'tbody',
-            null,
-            result.rows.map((row, rowIndex) =>
+            {
+              className: cached ? 'dbx-table dbx-table-fixed' : 'dbx-table',
+              ref: tableRef,
+              style: cached ? { width: totalWidth + 'px' } : undefined,
+            },
+            h(
+              'colgroup',
+              null,
+              [t('rowNo')].concat(columns).map(function (_col, index) {
+                return h('col', {
+                  key: index,
+                  ref: function (el) {
+                    colRefs.current[index] = el
+                  },
+                  style: cached && cached[index] ? { width: cached[index] + 'px' } : undefined,
+                })
+              }),
+            ),
+            h(
+              'thead',
+              null,
               h(
                 'tr',
-                { key: rowIndex },
-                row.map((value, colIndex) => {
-                  if (value === null || value === undefined) {
-                    return h('td', { key: colIndex }, h('span', { className: 'dbx-null' }, 'NULL'))
-                  }
-                  const text = typeof value === 'string' ? value : JSON.stringify(value)
-                  return h('td', { key: colIndex, title: text }, text)
+                null,
+                h('th', { key: '__no', className: 'dbx-col-no' }, t('rowNo')),
+                columns.map(function (col, index) {
+                  return h(
+                    'th',
+                    { key: col },
+                    col,
+                    h('span', {
+                      className: 'dbx-col-resize',
+                      title: t('resizeHint'),
+                      onMouseDown: function (event) {
+                        startResize(index + 1, event)
+                      },
+                    }),
+                  )
                 }),
               ),
             ),
-          ),
+            h(
+              'tbody',
+              null,
+              result.rows.map(function (row, rowIndex) {
+                return h(
+                  'tr',
+                  { key: rowIndex },
+                  h('td', { key: '__no', className: 'dbx-col-no' }, String(rowStart + rowIndex)),
+                  row.map(function (value, colIndex) {
+                    if (value === null || value === undefined) {
+                      return h('td', { key: colIndex }, h('span', { className: 'dbx-null' }, 'NULL'))
+                    }
+                    const text = typeof value === 'string' ? value : JSON.stringify(value)
+                    return h('td', { key: colIndex, title: text }, text)
+                  }),
+                )
+              }),
+            ),
           ),
         ),
       )
@@ -1073,7 +1217,10 @@ window.__ModuleLoader__.load({
       const [historyOpen, setHistoryOpen] = React.useState(false)
       const [running, setRunning] = React.useState(false)
       const [error, setError] = React.useState('')
-      const [result, setResult] = React.useState(null)
+      const [statements, setStatements] = React.useState([])
+      const [activeSet, setActiveSet] = React.useState(0)
+      const [selected, setSelected] = React.useState('')
+      const result = statements[activeSet] || null
       const [copied, setCopied] = React.useState('')
       const [renaming, setRenaming] = React.useState('')
       const [renameValue, setRenameValue] = React.useState('')
@@ -1204,7 +1351,8 @@ window.__ModuleLoader__.load({
         let alive = true
         setTabs([])
         setActiveId('')
-        setResult(null)
+        setStatements([])
+        setActiveSet(0)
         setError('')
         setHistoryOpen(false)
         call('queries/list', { source: source.id })
@@ -1232,6 +1380,10 @@ window.__ModuleLoader__.load({
           alive = false
         }
       }, [source.id])
+
+      React.useEffect(() => {
+        setSelected('')
+      }, [activeId])
 
       React.useEffect(() => {
         try {
@@ -1267,15 +1419,53 @@ window.__ModuleLoader__.load({
         setCopied(ok ? t('copied') : t('copyFailed'))
         window.setTimeout(() => setCopied(''), 1600)
       }
-      const run = async () => {
-        flush()
+      const runOne = async (index, page, pageSize) => {
+        const item = statements[index]
+        if (!item) return
         setRunning(true)
         setError('')
         try {
-          const value = await call('query/run', { source: source.id, sql: sql })
-          setResult(value)
+          const value = await call('query/run', {
+            source: source.id,
+            sql: item.sql,
+            page: page,
+            pageSize: pageSize,
+          })
+          const next = (value && value.statements && value.statements[0]) || null
+          if (next) setStatements((list) => list.map((row, i) => (i === index ? next : row)))
+          if (value && value.error) {
+            setError(t('statementFailed').replace('{n}', String(value.error.index + 1)) + '：' + value.error.message)
+          }
         } catch (cause) {
-          setResult(null)
+          setError(messageOf(cause))
+        } finally {
+          setRunning(false)
+        }
+      }
+      const goPage = (delta) => {
+        if (!result || !result.paged) return
+        const next = Math.max(1, (result.page || 1) + delta)
+        void runOne(activeSet, next, result.pageSize || 100)
+      }
+      const changePageSize = (size) => {
+        if (!result || !result.paged) return
+        void runOne(activeSet, 1, size)
+      }
+      const run = async (override) => {
+        flush()
+        const target = typeof override === 'string' && override.trim() ? override : selected.trim() || sql
+        setRunning(true)
+        setError('')
+        try {
+          const value = await call('query/run', { source: source.id, sql: target })
+          const list = (value && value.statements) || []
+          setStatements(list)
+          setActiveSet(0)
+          if (value && value.error) {
+            setError(t('statementFailed').replace('{n}', String(value.error.index + 1)) + '：' + value.error.message)
+          }
+        } catch (cause) {
+          setStatements([])
           setError(messageOf(cause))
         } finally {
           setRunning(false)
@@ -1301,8 +1491,14 @@ window.__ModuleLoader__.load({
           ),
           h(
             Button,
-            { size: 'sm', variant: 'primary', disabled: running, onClick: () => void run() },
-            running ? t('running') : t('run'),
+            {
+              size: 'sm',
+              variant: 'primary',
+              disabled: running,
+              title: selected.trim() ? t('runSelectedHint') : t('runHint'),
+              onClick: () => void run(selected),
+            },
+            running ? t('running') : selected.trim() ? t('runSelected') : t('run'),
           ),
         ),
         h(
@@ -1424,7 +1620,8 @@ window.__ModuleLoader__.load({
                 t: t,
                 value: sql,
                 onChange: setSql,
-                onRun: () => void run(),
+                onRun: (text) => void run(text),
+                onSelectionChange: setSelected,
                 sourceId: source.id,
                 disabled: running,
               }),
@@ -1434,6 +1631,24 @@ window.__ModuleLoader__.load({
               'div',
               { className: 'dbx-pane-result' },
               error ? h('div', { className: 'dbx-err' }, error) : null,
+              statements.length > 1
+                ? h(
+                    'div',
+                    { className: 'dbx-rs-tabs' },
+                    statements.map((item, index) =>
+                      h(
+                        'button',
+                        {
+                          key: index,
+                          className: index === activeSet ? 'dbx-rs-tab dbx-rs-tab-active' : 'dbx-rs-tab',
+                          title: item.sql,
+                          onClick: () => setActiveSet(index),
+                        },
+                        (item.wrote ? t('execTag') : t('resultTag')) + ' ' + String(index + 1),
+                      ),
+                    ),
+                  )
+                : null,
               h(ResultTable, { result: result, t: t }),
               result
                 ? h(
@@ -1456,16 +1671,55 @@ window.__ModuleLoader__.load({
                     h('span', { style: { flex: '1' } }),
                     h(
                       'span',
-                      null,
+                      { className: 'dbx-status-right' },
+                      result.paged
+                        ? h(
+                            'button',
+                            {
+                              className: 'dbx-pg-btn',
+                              disabled: running || (result.page || 1) <= 1,
+                              onClick: () => goPage(-1),
+                            },
+                            t('prevPage'),
+                          )
+                        : null,
+                      result.paged
+                        ? h(
+                            'button',
+                            { className: 'dbx-pg-btn', disabled: running || !result.hasNext, onClick: () => goPage(1) },
+                            t('nextPage'),
+                          )
+                        : null,
+                      h(
+                        'span',
+                        { className: 'dbx-status-text' },
                       (result.wrote
                         ? t('wrote') + ' · ' + t('affected') + ': ' + String(result.rowsAffected || 0)
-                        : String(result.rowCount) + ' ' + t('rows')) +
+                        : (result.paged ? t('pageOf').replace('{n}', String(result.page || 1)) + ' · ' : '') +
+                          String(result.rowCount) + ' ' + t('rows')) +
                         ' · ' +
                         t('elapsed') +
                         ' ' +
                         String(result.elapsedMs) +
                         ' ms' +
-                        (result.truncated ? ' · ' + t('truncated') : ''),
+                        (result.truncated
+                          ? ' · ' + t('truncated') + (result.paged ? '' : ' · ' + t('noPaging'))
+                          : ''),
+                      ),
+                      result.paged
+                        ? h(
+                            'select',
+                            {
+                              className: 'dbx-pg-size',
+                              value: String(result.pageSize || 100),
+                              disabled: running,
+                              onChange: (event) => changePageSize(Number(event.target.value)),
+                            },
+                            [50, 100, 200, 500].map((size) =>
+                              h('option', { key: size, value: String(size) }, String(size) + ' ' + t('rowsPerPage')),
+                            ),
+                          )
+                        : null,
                     ),
                   )
                 : null,

@@ -27,7 +27,8 @@ import {
   parseSources,
   type SourceConfig,
 } from './core.js'
-import { assertReadonlySql, assertWriteSql } from './sql-guard.js'
+import { pageSql } from './pagination.js'
+import { assertReadonlyScript, assertWriteScript } from './sql-guard.js'
 import { closeAllPools, listDatabases, listTables, probe, runExecute, runQuery, tableColumns } from './pool.js'
 import { migrateLegacySources } from './settings-store.js'
 import { queriesPathFor } from './query-store.js'
@@ -249,14 +250,19 @@ export function apply(ctx: Context, config: Config = {}): void {
         sql: {
           type: 'string',
           required: true,
-          description: 'Single read-only statement with the engine-specific placeholders (@p0 / $1 / ?).',
+          description:
+            'One or more read-only statements separated by ; (or a standalone GO line). Each is executed in order and returned as its own result set. Params only for a single statement.',
         },
         params: {
           type: 'array',
           items: { type: 'json' },
           description: 'Bound values for the placeholders, in order.',
         },
-        limit: { type: 'integer', description: 'Max rows to return (default 100, hard cap 500).' },
+        limit: { type: 'integer', description: 'Rows per page (default 100, hard cap 500).' },
+        page: {
+          type: 'integer',
+          description: '1-based page number (default 1). Paging is appended by the engine (OFFSET/FETCH or LIMIT/OFFSET).',
+        },
       },
       output: {
         schema: { type: 'string' },
@@ -265,14 +271,57 @@ export function apply(ctx: Context, config: Config = {}): void {
       execute: async (args) => {
         try {
           const source = pick(args.source)
-          assertReadonlySql(args.sql)
-          const result = await runQuery(
-            source,
-            args.sql,
-            Array.isArray(args.params) ? args.params : undefined,
-            clampLimit(args.limit),
-          )
-          return JSON.stringify({ source: source.id, engine: source.engine, ...result }, null, 2)
+          const parts = assertReadonlyScript(args.sql)
+          const params = Array.isArray(args.params) ? args.params : undefined
+          if (parts.length > 1 && params && params.length > 0) {
+            throw new Error('db: 多语句不能共用 params，请逐条调用或去掉 params')
+          }
+          const pageSize = clampLimit(args.limit)
+          const page =
+            typeof args.page === 'number' && Number.isFinite(args.page) && args.page >= 1
+              ? Math.floor(args.page)
+              : 1
+          const offset = (page - 1) * pageSize
+          const statements: Array<Record<string, unknown>> = []
+          for (let index = 0; index < parts.length; index++) {
+            const part = parts[index] as string
+            try {
+              const paged = pageSql(source.engine ?? 'sqlserver', part, offset, pageSize + 1)
+              const fetched = await runQuery(source, paged ?? part, params, paged ? pageSize + 1 : pageSize)
+              let rows = fetched.rows
+              let hasNext = false
+              if (paged) {
+                if (rows.length > pageSize) {
+                  hasNext = true
+                  rows = rows.slice(0, pageSize)
+                }
+              }
+              statements.push({
+                sql: part,
+                kind: 'query',
+                ...fetched,
+                rows: rows,
+                rowCount: rows.length,
+                truncated: paged ? false : fetched.truncated,
+                paged: paged !== null,
+                page: page,
+                pageSize: pageSize,
+                hasNext: hasNext,
+              })
+            } catch (error) {
+              return JSON.stringify(
+                {
+                  source: source.id,
+                  engine: source.engine,
+                  statements: statements,
+                  error: { index: index, sql: part, message: (error as Error).message },
+                },
+                null,
+                2,
+              )
+            }
+          }
+          return JSON.stringify({ source: source.id, engine: source.engine, statements: statements }, null, 2)
         } catch (error) {
           return fail(error)
         }
@@ -285,12 +334,17 @@ export function apply(ctx: Context, config: Config = {}): void {
     defineTool({
       name: 'db_execute',
       description:
-        'Run ONE write statement (INSERT / UPDATE / DELETE / MERGE) against a writable source. ' +
+        'Run one or more write statements (INSERT / UPDATE / DELETE / MERGE) against a writable source. ' +
         'Requires the source to be configured writable AND an explicit allowWrite: true. ' +
+        'Multiple statements separated by ; are each validated and executed in order (no transaction). ' +
         'DDL needs allowDdl on the source. Read data with db_query instead.',
       parameters: {
         source: { type: 'string', description: 'Source id from db_sources; optional.' },
-        sql: { type: 'string', required: true, description: 'Single write statement.' },
+        sql: {
+          type: 'string',
+          required: true,
+          description: 'One write statement, or several separated by ; (each validated separately).',
+        },
         allowWrite: {
           type: 'boolean',
           required: true,
@@ -315,16 +369,34 @@ export function apply(ctx: Context, config: Config = {}): void {
           if (args.allowWrite !== true) {
             return 'db: 写操作需要显式 allowWrite: true（源 ' + source.id + '）'
           }
-          assertWriteSql(args.sql, {
+          const parts = assertWriteScript(args.sql, {
             allowDdl: source.allowDdl === true,
-            allowBatch: source.allowBatch === true,
+            allowBatch: source.allowBatch !== false,
           })
-          const result = await runExecute(
-            source,
-            args.sql,
-            Array.isArray(args.params) ? args.params : undefined,
-          )
-          return JSON.stringify({ source: source.id, engine: source.engine, ...result }, null, 2)
+          const params = Array.isArray(args.params) ? args.params : undefined
+          if (parts.length > 1 && params && params.length > 0) {
+            throw new Error('db: 多语句不能共用 params，请逐条调用或去掉 params')
+          }
+          const statements: Array<Record<string, unknown>> = []
+          for (let index = 0; index < parts.length; index++) {
+            const part = parts[index] as string
+            try {
+              const result = await runExecute(source, part, params)
+              statements.push({ sql: part, kind: 'write', wrote: true, ...result })
+            } catch (error) {
+              return JSON.stringify(
+                {
+                  source: source.id,
+                  engine: source.engine,
+                  statements: statements,
+                  error: { index: index, sql: part, message: (error as Error).message },
+                },
+                null,
+                2,
+              )
+            }
+          }
+          return JSON.stringify({ source: source.id, engine: source.engine, statements: statements }, null, 2)
         } catch (error) {
           return fail(error)
         }

@@ -119,3 +119,186 @@ export function assertWriteSql(sql: string, opts: { allowDdl: boolean; allowBatc
   }
   if (WRITE_DENY.test(body)) throw new Error('db: 语句命中提权/外联关键字，已拒绝')
 }
+
+/** 把脚本拆成单条语句：分号分隔（字符串 / 注释 / 引号标识符里的分号不算），另支持 SSMS 风格的单独一行 GO。 */
+export function splitStatements(sql: string): string[] {
+  const chunks: string[] = []
+  let buf = ''
+  let i = 0
+  const n = sql.length
+  const push = () => {
+    const trimmed = buf.trim()
+    if (trimmed) chunks.push(trimmed)
+    buf = ''
+  }
+  while (i < n) {
+    const ch = sql[i] as string
+    if (ch === "'" || ch === '"' || ch === '[' || ch === '`') {
+      const close = ch === '[' ? ']' : ch
+      buf += ch
+      i++
+      while (i < n) {
+        buf += sql[i]
+        if (sql[i] === close) {
+          if (sql[i + 1] === close) {
+            buf += sql[i + 1]
+            i += 2
+            continue
+          }
+          i++
+          break
+        }
+        i++
+      }
+      continue
+    }
+    if (ch === '-' && sql[i + 1] === '-') {
+      while (i < n && sql[i] !== '\n') {
+        buf += sql[i]
+        i++
+      }
+      continue
+    }
+    if (ch === '/' && sql[i + 1] === '*') {
+      while (i < n && !(sql[i] === '*' && sql[i + 1] === '/')) {
+        buf += sql[i]
+        i++
+      }
+      if (i < n) {
+        buf += '*/'
+        i += 2
+      }
+      continue
+    }
+    if (ch === ';') {
+      push()
+      i++
+      continue
+    }
+    buf += ch
+    i++
+  }
+  push()
+  // GO 只作为批处理分隔符，不能当语句执行
+  const out: string[] = []
+  for (const chunk of chunks) {
+    let piece = ''
+    for (const line of chunk.split(/\r?\n/)) {
+      if (/^\s*GO\s*$/i.test(line)) {
+        const trimmed = piece.trim()
+        if (trimmed) out.push(trimmed)
+        piece = ''
+        continue
+      }
+      piece += line + '\n'
+    }
+    const trimmed = piece.trim()
+    if (trimmed) out.push(trimmed)
+  }
+  const merged: string[] = []
+  for (const chunk of out) {
+    for (const part of splitByKeywordLine(chunk)) merged.push(part)
+  }
+  // 纯注释的行不算一条语句（否则尾部写个注释就会报“不支持的语句类型”）
+  return merged.filter((item) => stripLiterals(item).trim().length > 0)
+}
+
+/** 只读脚本断言：逐条校验，全部是 SELECT / WITH / VALUES 才放行，返回拆好的语句。 */
+export function assertReadonlyScript(sql: string): string[] {
+  const parts = splitStatements(sql)
+  if (parts.length === 0) throw new Error('db: SQL 不能为空')
+  for (const part of parts) assertReadonlySql(part)
+  return parts
+}
+
+/** 写脚本断言：逐条校验（类别 / DDL 开关 / 提权禁词），批量需要 allowBatch。 */
+export function assertWriteScript(sql: string, opts: { allowDdl: boolean; allowBatch: boolean }): string[] {
+  const parts = splitStatements(sql)
+  if (parts.length === 0) throw new Error('db: SQL 不能为空')
+  if (parts.length > 1 && !opts.allowBatch) {
+    throw new Error('db: 写通道默认只允许单条语句；需要批量执行请在源配置打开 allowBatch')
+  }
+  for (const part of parts) assertWriteSql(part, { allowDdl: opts.allowDdl, allowBatch: true })
+  return parts
+}
+
+/** 新语句行首关键字：没有分号的脚本靠它切分（启发式，推荐还是写 ;）。 */
+const BATCH_STARTERS = new Set([
+  'SELECT',
+  'WITH',
+  'VALUES',
+  'INSERT',
+  'UPDATE',
+  'DELETE',
+  'MERGE',
+  'CREATE',
+  'ALTER',
+  'DROP',
+  'TRUNCATE',
+  'EXEC',
+  'EXECUTE',
+  'DECLARE',
+  'SET',
+  'USE',
+  'BEGIN',
+  'COMMIT',
+  'ROLLBACK',
+  'IF',
+  'WHILE',
+  'PRINT',
+  'RAISERROR',
+])
+
+/** 上一行以这些结尾说明语句还没写完，不能在这里切。 */
+const CONTINUE_TAIL =
+  /([,()\[+\-*/%<>=|&^~!.]|\b(and|or|not|in|is|like|between|then|else|when|union|intersect|except|all|any|some|join|on|from|into|by|as|case|values|using|apply|over|exists|set|return|begin|end))\s*$/i
+
+function parenDelta(text: string): number {
+  let delta = 0
+  for (const ch of text) {
+    if (ch === '(') delta++
+    else if (ch === ')') delta--
+  }
+  return delta
+}
+
+/** 没有分号时按「行首新语句关键字」切分；遇到括号未闭合、上一行是逗号/运算符/连接词时不切。 */
+export function splitByKeywordLine(chunk: string): string[] {
+  const lines = chunk.split(/\r?\n/)
+  const out: string[] = []
+  let current: string[] = []
+  let depth = 0
+  let prevContinues = true
+  let hasContent = false
+  const flush = () => {
+    const text = current.join('\n').trim()
+    if (text) out.push(text)
+    current = []
+  }
+  for (const line of lines) {
+    const skeleton = stripLiterals(line)
+    const head = /^\s*([A-Za-z_][A-Za-z_0-9]*)/.exec(skeleton)?.[1]?.toUpperCase()
+    const startsWithParen = /^\s*\(/.test(skeleton)
+    const isCommentOnly = skeleton.trim().length === 0 && line.trim().length > 0
+    if (
+      depth === 0 &&
+      hasContent &&
+      !prevContinues &&
+      !startsWithParen &&
+      head !== undefined &&
+      BATCH_STARTERS.has(head)
+    ) {
+      flush()
+    }
+    current.push(line)
+    if (!isCommentOnly) {
+      depth = Math.max(0, depth + parenDelta(skeleton))
+    }
+    if (skeleton.trim().length > 0) {
+      hasContent = true
+      prevContinues = CONTINUE_TAIL.test(skeleton.trim())
+    }
+  }
+  flush()
+  return out
+}

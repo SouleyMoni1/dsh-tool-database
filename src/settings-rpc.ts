@@ -34,7 +34,8 @@ import {
 } from './core.js'
 import { PASSWORD_SENTINEL, envNameOf, formatDsn, parseDsn } from './dsn.js'
 import { deleteTab, listTabs, normalizeTab, saveTab } from './query-store.js'
-import { assertReadonlySql, assertWriteSql, isDdlSql, isWriteSql } from './sql-guard.js'
+import { pageSql } from './pagination.js'
+import { assertReadonlySql, assertWriteSql, isDdlSql, isReadonlySql, isWriteSql, splitStatements } from './sql-guard.js'
 import { readConsoleConfig, readSourcesFile, removeSource, upsertSource, writeConsoleConfig, writeSourcesFile } from './settings-store.js'
 
 /**
@@ -137,7 +138,7 @@ function viewOf(source: SourceConfig): Record<string, unknown> {
     ssl: source.ssl === true || source.encrypt === true,
     writable: source.writable === true,
     allowDdl: source.allowDdl === true,
-    allowBatch: source.allowBatch === true,
+    allowBatch: source.allowBatch !== false,
     hasPassword: Boolean(source.passwordEnv || source.password),
     passwordEnv: source.passwordEnv ?? '',
     dsn: formatDsn(source, { mask: true }),
@@ -221,7 +222,7 @@ function buildSource(input: SourceInput, existing: SourceConfig | undefined): So
     trustServerCertificate: existing?.trustServerCertificate,
     writable: bool(input.writable),
     allowDdl: bool(input.allowDdl),
-    allowBatch: bool(input.allowBatch) || existing?.allowBatch === true,
+    allowBatch: input.allowBatch === undefined ? (existing?.allowBatch ?? true) : bool(input.allowBatch),
     requestTimeoutMs: existing?.requestTimeoutMs,
   }
 }
@@ -232,32 +233,93 @@ function requireSource(deps: SettingsRpcDeps, id: string | undefined): SourceCon
   return found
 }
 
-/** 控制台执行：只读直接跑；写语句按 console 配置 + 源开关判定。 */
+/** 页码：>= 1 的整数，默认 1。 */
+function clampPage(value: unknown): number {
+  const n = typeof value === 'number' && Number.isFinite(value) ? Math.floor(value) : 1
+  return n >= 1 ? n : 1
+}
+
+/** 控制台执行：逐条校验后按顺序跑，返回多个结果集；只读语句支持翻页，写语句按 console 配置 + 源开关判定。 */
 async function runConsole(deps: SettingsRpcDeps, body: Record<string, unknown>): Promise<RpcResult> {
   const source = requireSource(deps, text(body.source))
   const sql = text(body.sql)
   if (!sql) throw new Error('db: SQL 不能为空')
   const config = readConsoleConfig()
-  const limit = clampLimit(
-    typeof body.limit === 'number' ? body.limit : config.limit,
+  const pageSize = clampLimit(
+    typeof body.pageSize === 'number' ? body.pageSize : config.limit,
     config.limit,
   )
-  const write = isWriteSql(sql) || isDdlSql(sql)
-  if (!write) {
-    assertReadonlySql(sql)
-    return ok({ source: source.id, ...(await deps.query(source, sql, limit)) as object })
+  const page = clampPage(body.page)
+  const offset = (page - 1) * pageSize
+  const parts = splitStatements(sql)
+  if (parts.length === 0) throw new Error('db: SQL 不能为空')
+  const kinds: Array<'query' | 'write'> = parts.map((part) => {
+    if (isReadonlySql(part)) return 'query'
+    if (isWriteSql(part) || isDdlSql(part)) return 'write'
+    throw new Error(
+      'db: 不支持的语句类型（只接受 SELECT / WITH / VALUES，或 INSERT / UPDATE / DELETE / MERGE）：' + part.slice(0, 60),
+    )
+  })
+  const writeCount = kinds.filter((kind) => kind === 'write').length
+  if (writeCount > 0) {
+    const mode: ConsoleWriteMode = config.writeMode
+    if (mode === 'readonly') {
+      throw new Error('db: 控制台当前是「一律只读」模式，写语句被拒绝（可在本页下方或设置里改）')
+    }
+    if (mode === 'source' && source.writable !== true) {
+      throw new Error('db: 源 ' + source.id + ' 是只读的（writable 未开启），控制台写语句被拒绝')
+    }
+    if (writeCount > 1 && source.allowBatch === false) {
+      throw new Error('db: 该源已关闭 allowBatch，只允许单条写语句')
+    }
+    const allowDdl = mode === 'always' ? true : source.allowDdl === true
+    for (let index = 0; index < parts.length; index++) {
+      if (kinds[index] === 'write') {
+        assertWriteSql(parts[index] as string, { allowDdl: allowDdl, allowBatch: true })
+      }
+    }
   }
-  const mode: ConsoleWriteMode = config.writeMode
-  if (mode === 'readonly') {
-    throw new Error('db: 控制台当前是「一律只读」模式，写语句被拒绝（可在本页下方或设置里改）')
+  const statements: Array<Record<string, unknown>> = []
+  for (let index = 0; index < parts.length; index++) {
+    const part = parts[index] as string
+    try {
+      if (kinds[index] === 'write') {
+        const result = (await deps.execute(source, part)) as Record<string, unknown>
+        statements.push({ sql: part, kind: 'write', wrote: true, ...result })
+        continue
+      }
+      const paged = pageSql(source.engine ?? 'sqlserver', part, offset, pageSize + 1)
+      const fetched = (await deps.query(source, paged ?? part, paged ? pageSize + 1 : pageSize)) as Record<string, unknown>
+      let rows = Array.isArray(fetched.rows) ? (fetched.rows as unknown[]) : []
+      let hasNext = false
+      if (paged) {
+        if (rows.length > pageSize) {
+          hasNext = true
+          rows = rows.slice(0, pageSize)
+        }
+      }
+      statements.push({
+        sql: part,
+        kind: 'query',
+        columns: fetched.columns,
+        rows: rows,
+        rowCount: rows.length,
+        truncated: paged ? false : fetched.truncated === true,
+        paged: paged !== null,
+        page: page,
+        pageSize: pageSize,
+        hasNext: hasNext,
+        elapsedMs: fetched.elapsedMs,
+      })
+    } catch (error) {
+      return ok({
+        source: source.id,
+        statements: statements,
+        error: { index: index, sql: part, message: (error as Error).message },
+      })
+    }
   }
-  if (mode === 'source' && source.writable !== true) {
-    throw new Error('db: 源 ' + source.id + ' 是只读的（writable 未开启），控制台写语句被拒绝')
-  }
-  const allowDdl = mode === 'always' ? true : source.allowDdl === true
-  assertWriteSql(sql, { allowDdl, allowBatch: source.allowBatch === true })
-  const result = (await deps.execute(source, sql)) as Record<string, unknown>
-  return ok({ source: source.id, wrote: true, ...result })
+  return ok({ source: source.id, statements: statements })
 }
 
 async function dispatch(deps: SettingsRpcDeps, endpoint: string, payload: unknown): Promise<RpcResult> {

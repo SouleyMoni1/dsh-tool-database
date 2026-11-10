@@ -119,7 +119,7 @@ export interface SourceConfig {
   writable?: boolean
   /** 允许 DDL（CREATE / ALTER / DROP / TRUNCATE）。默认 false。 */
   allowDdl?: boolean
-  /** 写通道允许分号分隔的批量语句。默认 false。 */
+  /** 写通道允许分号分隔的批量语句。默认 true；显式 false 时锁成单条。 */
   allowBatch?: boolean
   requestTimeoutMs?: number
 }
@@ -273,7 +273,7 @@ export function parseSources(raw: unknown): SourceConfig[] {
       trustServerCertificate: s.trustServerCertificate !== false,
       writable: s.writable === true,
       allowDdl: s.allowDdl === true,
-      allowBatch: s.allowBatch === true,
+      allowBatch: s.allowBatch !== false,
       requestTimeoutMs:
         typeof s.requestTimeoutMs === 'number' && s.requestTimeoutMs > 0
           ? Math.floor(s.requestTimeoutMs)

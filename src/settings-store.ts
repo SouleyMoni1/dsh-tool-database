@@ -48,7 +48,7 @@ function toStored(source: SourceConfig): Record<string, unknown> {
   else if (source.password !== undefined) out.password = source.password
   out.writable = source.writable === true
   if (source.allowDdl) out.allowDdl = true
-  if (source.allowBatch) out.allowBatch = true
+  if (source.allowBatch === false) out.allowBatch = false
   if (source.ssl) out.ssl = true
   if (source.encrypt) out.encrypt = true
   if (source.trustServerCertificate === false) out.trustServerCertificate = false
